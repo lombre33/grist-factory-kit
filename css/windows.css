@@ -1,0 +1,55 @@
+/* Base commune des fenêtres (js/modal-base.js) et des saisies et confirmations (js/dialogs.js) : le voile, le cadre et ses trois zones (titre, contenu, boutons). Seul le
+   contenu défile : titre et boutons ne bougent pas, et la fenêtre tient dans le panneau de 700 × 400 de Grist. À charger après css/tokens.css. Les noms (pp-modal…,
+   --pp-scrim) sont ceux de la charte : ils viennent de Publipostage+, d'où le kit est extrait. */
+:root {
+  /* Trois largeurs : petite (une question et ses deux boutons), moyenne (un formulaire), large (une galerie et son aperçu). Toujours plafonnées à la largeur du panneau. */
+  --pp-modal-w-sm: 400px;
+  --pp-modal-w-md: 480px;
+  --pp-modal-w-lg: 960px;
+  /* Marge entre le cadre et le bord du panneau, en haut comme en bas : il reste 376 px à la fenêtre dans 400 px de haut. */
+  --pp-modal-gap: 12px;
+}
+
+/* Le voile suit le thème (--pp-scrim). Un clic sur le voile ne ferme rien, à dessein : il protège une saisie en cours. */
+.pp-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--pp-scrim); z-index: var(--z-window); }
+/* Les saisies et confirmations sont souvent la suite d'une autre fenêtre : elles passent par-dessus. */
+#pp-dialog-modal { z-index: var(--z-dialog); }
+
+/* Le cadre est en colonne : le contenu prend la place qui reste, titre et boutons gardent la leur. Pas d'overflow sur le cadre : il rognerait les coins et défilerait à sa
+   guise quand un champ prend le focus. */
+.pp-modal-box { display: flex; flex-direction: column; box-sizing: border-box; padding: 0; min-width: 0; width: var(--pp-modal-w, var(--pp-modal-w-md)); max-width: calc(100% - 2 * var(--pp-modal-gap)); max-height: calc(100% - 2 * var(--pp-modal-gap)); background: var(--surface); color: var(--text); border-radius: 8px; box-shadow: var(--shadow-float); font-family: var(--font-ui); }
+.pp-modal-box[data-size="sm"] { --pp-modal-w: var(--pp-modal-w-sm); }
+.pp-modal-box[data-size="lg"] { --pp-modal-w: var(--pp-modal-w-lg); }
+/* Le voile et le cadre prennent le focus par programme (clic à côté, ouverture sans champ) : pas de liseré sur ce qui n'est pas un contrôle. */
+.pp-modal:focus, .pp-modal-box:focus { outline: none; }
+.pp-modal-box :is(button, input, select, textarea, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Deux écarts propres à chaque fenêtre : sous le titre (ou sous ce que l'en-tête porte en plus : onglets, recherche) et au-dessus des boutons. Une fenêtre les règle en posant
+   --pp-modal-title-gap et --pp-modal-actions-gap sur son cadre. */
+.pp-modal-header { flex: none; padding: 18px 20px var(--pp-modal-title-gap, 6px); }
+.pp-modal-header h3 { margin: 0; font-size: 14.5px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+/* overscroll-behavior : au bout de la zone, la molette ne fait pas défiler la page derrière le voile. */
+.pp-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px; }
+.pp-modal-actions { flex: none; display: flex; align-items: center; gap: 8px; padding: var(--pp-modal-actions-gap, 20px) 20px 18px; }
+
+/* Les boutons : « Annuler » puis l'action nommée, le bouton principal en --accent-solid (le blanc dessus tient 4,5:1 dans les deux thèmes). */
+.pp-modal-actions .pp-modal-spacer { flex: 1; }
+.pp-modal-actions button { font-family: var(--font-ui); font-weight: 600; font-size: 13px; height: 30px; padding: 0 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); cursor: pointer; white-space: nowrap; }
+.pp-modal-actions button:hover { background: var(--surface-sunken); }
+.pp-modal-actions button.pp-modal-primary { background: var(--accent-solid); border-color: var(--accent-solid); color: var(--on-accent); }
+.pp-modal-actions button.pp-modal-primary:hover { background: var(--accent-solid-hover); }
+.pp-modal-actions button.pp-modal-danger { border-color: transparent; background: transparent; color: var(--danger-ink); padding: 0 4px; }
+.pp-modal-actions button.pp-modal-danger:hover { background: var(--danger-soft); }
+.pp-modal-actions button:disabled { opacity: .45; cursor: default; }
+.pp-modal-actions button:disabled:not(.pp-modal-primary):hover { background: var(--surface); }
+.pp-modal-actions button[hidden] { display: none; }
+
+/* « Annuler », « Abandonner » et « Enregistrer » (Dialogs.choose) ne tiennent pas côte à côte dans un panneau étroit (sous ~400 px) : le dernier passe sur sa propre ligne, à
+   droite, au lieu de sortir de la fenêtre. Au-dessus, tout reste sur une ligne. */
+#pp-dialog-modal .pp-modal-actions { flex-wrap: wrap; justify-content: flex-end; row-gap: 8px; }
+.pp-dialog-message { margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
+.pp-dialog-message[hidden] { display: none; }
+.pp-dialog-label { display: block; margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--text); }
+.pp-dialog-label[hidden] { display: none; }
+.pp-dialog-input { display: block; width: 100%; height: 30px; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; padding: 0 8px; background: var(--surface); color: var(--text); }
+.pp-dialog-input[hidden] { display: none; }

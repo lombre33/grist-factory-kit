@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Kit : page d'essai</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- La politique de sécurité d'une app hébergée par GFS : rien d'en ligne, rien d'extérieur. Si le kit avait besoin d'autre chose (un style posé en ligne, une police d'un autre site),
+     cette page casserait, et les essais avec elle. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="../css/tokens.css">
+<link rel="stylesheet" href="../css/windows.css">
+<link rel="stylesheet" href="page.css">
+<script type="module" src="page.js"></script>
+</head>
+<body>
+<main>
+  <h1 data-i18n="page.title">Page d'essai du kit</h1>
+  <p class="muted" data-i18n="page.intro" data-i18n-title="page.introTip">Chaque bouton ouvre une fenêtre du kit.</p>
+  <input id="field" type="text" data-i18n-placeholder="page.placeholder" data-i18n-aria="page.fieldLabel" placeholder="Un champ de la page">
+  <div class="row">
+    <button type="button" id="open-prompt" data-i18n="page.prompt">Saisie</button>
+    <button type="button" id="open-confirm" data-i18n="page.confirm">Confirmation</button>
+    <button type="button" id="open-danger" data-i18n="page.danger">Suppression</button>
+    <button type="button" id="open-choose" data-i18n="page.choose">Choix</button>
+    <button type="button" id="open-notice" data-i18n="page.notice">Information</button>
+    <button type="button" id="open-long" data-i18n="page.long">Long message</button>
+    <button type="button" id="open-window" data-i18n="page.window">Fenêtre</button>
+  </div>
+  <div class="row">
+    <button type="button" id="theme-toggle" data-i18n="page.theme">Thème</button>
+    <button type="button" id="lang-toggle" data-i18n="page.lang">Langue</button>
+    <button type="button" id="raise-a">A</button>
+    <button type="button" id="raise-b">B</button>
+    <button type="button" id="raise-tip">Info-bulle</button>
+  </div>
+  <div class="pop pop-menu" id="menu-a">A</div>
+  <div class="pop pop-menu pop-b" id="menu-b">B</div>
+  <div class="pop pop-tip" id="tip">Info-bulle</div>
+  <div class="pop pop-bar" id="bar">Barre flottante</div>
+</main>
+</body>
+</html>

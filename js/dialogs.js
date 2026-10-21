@@ -1,0 +1,118 @@
+// Saisies et confirmations du widget : des fenêtres à la place de window.prompt, window.confirm et window.alert, sur la base commune (js/modal-base.js : titre et boutons fixes, Tab et
+// Échap tenus, thème).
+//  Dialogs.prompt({ title, label?, message?, value?, placeholder?, confirmLabel?, cancelLabel? }) -> Promise<string | null> (null : annulé ; '' : champ laissé vide)
+//  Dialogs.confirm({ title, message, confirmLabel?, cancelLabel?, danger? }) -> Promise<boolean>
+//  Dialogs.choose({ title, message, choices, cancelLabel? }) -> Promise<string | null> (`value` du choix cliqué ; null : annulé, Échap compris)
+//    choices : [{ value, label, primary? }] dans l'ordre d'affichage, à droite de « Annuler » (qui reste le premier bouton) ; le focus arrive sur le choix `primary`, à défaut sur
+//    « Annuler ».
+//  Dialogs.notice({ title, message, closeLabel? }) -> Promise<void> (une information, un seul bouton qui ferme ; Échap aussi ; le focus arrive sur lui)
+// Ne s'appelle qu'avec `await` : la fenêtre n'arrête pas le script comme la boîte du navigateur. Une seule fenêtre, réutilisée : une demande qui arrive pendant qu'une autre est
+// ouverte annule la première (résolue comme un clic sur Annuler). Aucun texte ici sauf « Annuler », « Valider » et « Fermer » par défaut (I18n, clés `kit.`) ; titre, libellé et verbe
+// du bouton viennent de l'appelant.
+// Clavier : Entrée valide depuis le champ (pas pendant une composition de texte), Échap annule, Tab tourne entre le champ et les boutons. Le focus arrive sur le champ (texte
+// sélectionné) ou sur « Valider » ; pour une confirmation destructrice (`danger`), sur « Annuler », pour qu'un Entrée distrait ne supprime rien. À la fermeture, le focus revient à
+// l'élément qui l'avait à l'ouverture.
+import { h } from './dom.js';
+import { I18n } from './i18n.js';
+import { ModalBase } from './modal-base.js';
+import { once } from './once.js';
+
+once('dialogs', import.meta.url);
+
+let win = null;
+let refs = null;
+let current = null; // demande en cours : { finish(value), cancelValue }
+
+function ensure() {
+  if (win) return;
+  win = ModalBase.create({
+    id: 'pp-dialog-modal', titleId: 'pp-dialog-title', size: 'sm', boxClass: 'pp-dialog-box',
+    onEscape: () => { if (current) current.finish(current.cancelValue); },
+  });
+  const message = h('p', { class: 'pp-dialog-message', id: 'pp-dialog-message' });
+  const label = h('label', { class: 'pp-dialog-label', id: 'pp-dialog-input-label', for: 'pp-dialog-input' });
+  const input = h('input', { class: 'pp-dialog-input', id: 'pp-dialog-input', type: 'text', autocomplete: 'off' });
+  input.spellcheck = false;
+  win.body.append(message, label, input);
+  const { cancel, ok } = win.addButtons();
+  refs = { message, label, input, cancel, ok, choices: [] };
+}
+
+// Les boutons d'une demande `choose` n'existent que le temps de la fenêtre : retirés à la fermeture, « Valider » reprend sa place pour la demande suivante.
+function clearChoices() {
+  refs.choices.forEach(button => button.remove());
+  refs.choices = [];
+}
+
+// Ce que la fenêtre montre pour cette demande : titre, message, champ (saisie seulement) et libellés des deux boutons de base.
+function fill(opts, isPrompt, hasChoices) {
+  const { message, label, input, cancel, ok } = refs;
+  win.title.textContent = opts.title || '';
+  message.textContent = opts.message || '';
+  message.hidden = !opts.message;
+  label.textContent = opts.label || '';
+  label.hidden = !isPrompt || !opts.label;
+  input.hidden = !isPrompt;
+  input.value = isPrompt && opts.value != null ? String(opts.value) : '';
+  input.placeholder = opts.placeholder || '';
+  // Le champ est nommé par son libellé, sinon par le titre ; la fenêtre est décrite par le message quand il y en a un.
+  input.setAttribute('aria-labelledby', opts.label ? 'pp-dialog-input-label' : 'pp-dialog-title');
+  if (opts.message) win.box.setAttribute('aria-describedby', 'pp-dialog-message');
+  else win.box.removeAttribute('aria-describedby');
+  cancel.textContent = opts.cancelLabel || I18n.t('kit.cancel');
+  ok.textContent = opts.confirmLabel || I18n.t('kit.confirm');
+  ok.hidden = hasChoices;
+}
+
+// Les boutons d'une demande `choose`, à droite d'« Annuler ». Rend celui qui prend le focus : le dernier `primary`, à défaut « Annuler ».
+function addChoices(choices, finish) {
+  let first = refs.cancel;
+  choices.forEach(choice => {
+    const button = h('button', { type: 'button', class: choice.primary ? 'pp-modal-primary' : null, on: { click: () => finish(choice.value) } }, choice.label);
+    win.actions.append(button);
+    refs.choices.push(button);
+    if (choice.primary) first = button;
+  });
+  return first;
+}
+
+function ask(opts, kind) {
+  ensure();
+  if (current) current.finish(current.cancelValue);
+  return new Promise(resolve => {
+    const { input, cancel, ok } = refs;
+    const isPrompt = kind === 'prompt';
+    const isNotice = kind === 'notice';
+    const choices = kind === 'choose' ? (opts.choices || []) : null;
+    const cancelValue = isPrompt || choices ? null : (isNotice ? undefined : false);
+    let done = false;
+    const finish = value => {
+      if (done) return;
+      done = true;
+      current = null;
+      win.hide();
+      clearChoices();
+      resolve(value);
+    };
+    current = { finish, cancelValue };
+    // Une information n'a qu'un bouton, « Fermer » : celui d'« Annuler », sous son nom ; « Valider » est caché comme pour un choix.
+    fill(isNotice ? Object.assign({}, opts, { cancelLabel: opts.closeLabel || I18n.t('kit.close') }) : opts, isPrompt, !!choices || isNotice);
+    cancel.onclick = () => finish(cancelValue);
+    ok.onclick = () => finish(isPrompt ? input.value : true);
+    const firstFocus = choices ? addChoices(choices, finish) : (isPrompt ? input : (isNotice || opts.danger ? cancel : ok));
+    input.onkeydown = event => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      ok.click();
+    };
+    win.show(firstFocus);
+    if (isPrompt) input.select();
+  });
+}
+
+export const Dialogs = {
+  prompt: opts => ask(opts || {}, 'prompt'),
+  confirm: opts => ask(opts || {}, 'confirm'),
+  choose: opts => ask(opts || {}, 'choose'),
+  notice: opts => ask(opts || {}, 'notice'),
+};

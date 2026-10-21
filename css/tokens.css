@@ -1,0 +1,107 @@
+/* Jetons de la charte Grist Factory (section 1) : une base de gris, un seul bleu d'accent, le rouge et le vert pour l'état seulement. Les valeurs sont celles de
+   Publipostage+ (css/style.css), d'où le kit est extrait ; une app n'écrit jamais une couleur en dur, elle prend un jeton.
+   Contrastes (4,5:1 au moins, en clair comme en sombre ; test/tokens.test.mjs les mesure) :
+   - un texte gris prend --text-muted (4,61:1 au moins sur tous les fonds clairs) ;
+   - un texte rouge prend --danger-ink, jamais --danger (4,37:1 sur blanc : bordures, filets et icônes seulement) ;
+   - un bouton plein à texte blanc prend --accent-solid et --on-accent, jamais --accent (qui s'éclaircit en sombre : 3,08:1 au blanc) ;
+   - un texte d'accent posé sur un fond teinté (--accent-soft, --surface-sunken) prend --accent-ink, jamais --accent (3,97 à 4,43:1).
+   Le thème : trois sources, dans cet ordre. Le choix de la personne (data-theme="light" ou "dark" sur <html>, js/theme.js) ; à défaut le thème de Grist (le script d'API de
+   Grist pose data-grist-appearance sur <html>) ; à défaut la préférence du système. Le sombre ne change que l'interface, jamais le contenu qu'une app produit.
+   Les deux blocs sombres ci-dessous sont identiques : test/tokens.test.mjs le vérifie (une règle de média ne se mutualise pas avec un sélecteur). */
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-sunken: #eef1f6;
+  --border: #dde2ea;
+  --border-strong: #c3cad6;
+  --text: #1b2430;
+  --text-muted: #5f6b7e;
+  --accent: #2f6fed;
+  --accent-hover: #2558c4;
+  /* Fond d'un bouton plein : le même bleu dans les deux thèmes, le blanc (--on-accent) dessus fait 4,55:1. */
+  --accent-solid: #2f6fed;
+  --accent-solid-hover: #2558c4;
+  --on-accent: #ffffff;
+  --accent-ink: #2558c4;
+  --accent-soft: #e8f0fe;
+  --accent-soft-border: #c7dbfd;
+  --good: #146c48;
+  --good-soft: #e5f6ee;
+  --good-soft-border: #bfe6d3;
+  --danger: #d84343;
+  --danger-soft: #fbe9e9;
+  --danger-ink: #c53030;
+  --radius-sm: 7px;
+  --shadow-float: 0 14px 32px -8px rgba(9, 16, 35, .35), 0 2px 8px rgba(9, 16, 35, .12);
+  --shadow-card: 0 1px 2px rgba(20, 28, 46, .05);
+  /* La police du système : rien n'est téléchargé (une police d'un autre site lui dirait l'adresse IP et l'heure de la personne). Poids 400, 600 et 700 seulement. */
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Voile derrière les fenêtres : plus foncé en sombre. */
+  --pp-scrim: rgba(15, 23, 42, .45);
+  /* Les couches, de la plus basse à la plus haute (js/layers.js) : barres flottantes d'une sélection < menus, listes et popups < info-bulles < fenêtres < saisies et
+     confirmations. Un niveau est large de 100 : Layers.raise ajoute le rang du dernier ouvert, qui ne le dépasse jamais. Aucun z-index en dur hors de ce fichier. */
+  --z-floating-toolbar: 1500;
+  --z-menu: 1600;
+  --z-tip: 1800;
+  --z-window: 2000;
+  --z-dialog: 2100;
+}
+
+:root[data-theme="dark"],
+:root[data-grist-appearance="dark"]:not([data-theme="light"]) {
+  --bg: #171b23;
+  --surface: #1e2430;
+  --surface-sunken: #262e3c;
+  --border: #323b4b;
+  --border-strong: #465166;
+  --text: #e7ecf5;
+  --text-muted: #9aa6bb;
+  --accent: #5b91f5;
+  --accent-hover: #74a3f7;
+  --accent-ink: #74a3f7;
+  --accent-soft: #24324b;
+  --accent-soft-border: #35507d;
+  --good: #6fd3a3;
+  --good-soft: #163326;
+  --good-soft-border: #2c5c45;
+  --danger: #f08a8a;
+  --danger-soft: #3a2426;
+  --danger-ink: #f08a8a;
+  --shadow-float: 0 14px 32px -8px rgba(0, 0, 0, .65), 0 2px 8px rgba(0, 0, 0, .45);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .45);
+  --pp-scrim: rgba(3, 6, 12, .62);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]):not([data-grist-appearance]) {
+    --bg: #171b23;
+    --surface: #1e2430;
+    --surface-sunken: #262e3c;
+    --border: #323b4b;
+    --border-strong: #465166;
+    --text: #e7ecf5;
+    --text-muted: #9aa6bb;
+    --accent: #5b91f5;
+    --accent-hover: #74a3f7;
+    --accent-ink: #74a3f7;
+    --accent-soft: #24324b;
+    --accent-soft-border: #35507d;
+    --good: #6fd3a3;
+    --good-soft: #163326;
+    --good-soft-border: #2c5c45;
+    --danger: #f08a8a;
+    --danger-soft: #3a2426;
+    --danger-ink: #f08a8a;
+    --shadow-float: 0 14px 32px -8px rgba(0, 0, 0, .65), 0 2px 8px rgba(0, 0, 0, .45);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, .45);
+    --pp-scrim: rgba(3, 6, 12, .62);
+  }
+}
+
+/* Le gris par défaut du texte d'aide d'un champ tombe à 3,4:1 sur les fonds sombres ; en clair il reste celui du navigateur. Même gris que le texte secondaire, sans
+   l'atténuation d'opacité que Firefox y ajoute. */
+:root[data-theme="dark"] :is(input, textarea)::placeholder,
+:root[data-grist-appearance="dark"]:not([data-theme="light"]) :is(input, textarea)::placeholder { color: var(--text-muted); opacity: 1; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]):not([data-grist-appearance]) :is(input, textarea)::placeholder { color: var(--text-muted); opacity: 1; }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "grist-factory-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kit commun des apps Grist Factory : jetons de la charte, thème, traduction français / anglais, fenêtres, saisies et confirmations, couches. Modules ES pour le navigateur, aucune bibliothèque.",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:navigateur": "node navigateur/essais.mjs"
+  }
+}

@@ -1,0 +1,22 @@
+/* La page d'essai : ses couleurs viennent des jetons du kit, comme celles d'une app. */
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 var(--font-ui); }
+main { padding: 12px; }
+h1 { margin: 0 0 4px; font-size: 16px; }
+.muted { margin: 0 0 8px; color: var(--text-muted); font-size: 12.5px; }
+#field { display: block; width: 240px; height: 28px; box-sizing: border-box; margin-bottom: 8px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.row button { height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.row button:hover { background: var(--surface-sunken); }
+.row button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Le contenu de la fenêtre libre : des champs comme une app les écrit, par les jetons. */
+#own-name { height: 28px; box-sizing: border-box; margin: 0 8px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; }
+
+/* Les couches : trois cartes qui se recouvrent, une par niveau de jeton, sous les deux rangées de boutons ; la barre flottante est à l'écart. Points d'essai : (500, 230) dans les deux
+   menus seulement, (420, 200) dans le premier menu et l'info-bulle seulement. */
+.pop { position: fixed; width: 120px; height: 60px; padding: 6px; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--text); }
+.pop-menu { z-index: var(--z-menu); left: 400px; top: 190px; }
+.pop-b { left: 440px; top: 210px; background: var(--good-soft); }
+.pop-tip { z-index: var(--z-tip); left: 340px; top: 180px; background: var(--danger-soft); }
+.pop-bar { z-index: var(--z-floating-toolbar); left: 300px; top: 330px; background: var(--surface-sunken); }
+/* Un popup ouvert depuis le champ d'une fenêtre (Layers.raise avec la fenêtre) : posé au milieu du panneau, là où se trouve le cadre d'une saisie. */
+.pop-over { z-index: var(--z-menu); left: 300px; top: 190px; background: var(--accent-soft); }
