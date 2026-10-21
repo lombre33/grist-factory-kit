@@ -24,7 +24,8 @@ export function check(label, ok, detail = '') {
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png' };
 
-// Sert le dépôt tel quel, sans cache. Comme GitHub Pages, ni fichier ni dossier dont le nom commence par « _ » ou « . ».
+// Sert le dépôt tel quel, sans cache. Comme GitHub Pages, ni fichier ni dossier dont le nom commence par « _ » ou « . », et l'en-tête CORS ouvert : un module chargé par le cadre
+// isolé d'une app (origine opaque) ne passe pas sans lui.
 export function serve() {
   const server = http.createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
@@ -33,7 +34,7 @@ export function serve() {
     try {
       if (hidden || !file.startsWith(ROOT + sep)) throw new Error('refusé');
       const data = await readFile(file);
-      response.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+      response.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
       response.end(data);
     } catch (error) {
       response.writeHead(404);

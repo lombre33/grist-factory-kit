@@ -9,6 +9,7 @@
 // quand il n'en propose aucune des deux, le français quand il ne dit rien. Dans GFS, l'app suit ensuite `contexte.langue` et l'événement `langue` par `setLanguage`.
 // Les clés du kit commencent par `kit.` ; celles d'une app prennent le préfixe de l'app.
 import { once } from './once.js';
+import { hostContract } from './host.js';
 
 once('i18n', import.meta.url);
 
@@ -24,9 +25,8 @@ export const KIT_STRINGS = Object.freeze({
 
 // La langue que GFS donne au cadre de l'app (`language` n'est lue qu'avec `gfs=<n>` : seule, l'app n'est pas obligée de suivre la langue de Grist). null quand GFS n'en donne pas une des deux.
 export function hostedLanguage(search) {
-  const params = new URLSearchParams(search || '');
-  if (!/^\d{1,6}$/.test(params.get('gfs') || '')) return null;
-  return supported(String(params.get('language') || '').toLowerCase());
+  if (hostContract(search) === null) return null;
+  return supported(String(new URLSearchParams(search || '').get('language') || '').toLowerCase());
 }
 
 // La première langue du navigateur parmi les deux ; l'anglais s'il en propose d'autres seulement, le français s'il ne dit rien.

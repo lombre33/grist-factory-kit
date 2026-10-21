@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { chromium, serve, ROOT, say, check, tally } from './aide.mjs';
 import { themeSources, themeKept, storageRefused, language, loadedTwice } from './scenarios-theme.mjs';
 import { dialogs, ownWindow, layers } from './scenarios-fenetres.mjs';
+import { gfsLink } from './scenarios-gfs.mjs';
 
 const shots = process.env.KIT_CAPTURES || join(ROOT, 'navigateur', 'captures');
 await mkdir(shots, { recursive: true });
@@ -24,6 +25,7 @@ await run('thème : le choix gardé', () => themeKept(env));
 await run('stockage refusé', () => storageRefused(env));
 await run('langue', () => language(env));
 await run('double chargement', () => loadedTwice(env));
+await run('lien avec GFS, dans un cadre isolé', () => gfsLink(env));
 for (const system of ['light', 'dark']) {
   for (const locale of ['fr-FR', 'en-US']) await run(`saisies et confirmations (${system}, ${locale})`, () => dialogs(env, system, locale));
   await run(`fenêtre libre (${system})`, () => ownWindow(env, system));
