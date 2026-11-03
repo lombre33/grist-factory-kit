@@ -1,10 +1,11 @@
-// L'ambiance de GFS chez l'app : le message d'ambiance lu avec méfiance (js/ambiance-message.js) et posé sur la page par le CSSOM (js/ambiance.js). Le message d'essai est un vrai message de GFS
+// L'ambiance de GFS chez l'app : le message d'ambiance lu avec méfiance (js/ambiance-message.js) et posé sur la page par le CSSOM (js/ambiance-pose.js, branché sur le lien et le thème du kit par js/ambiance.js). Le message d'essai est un vrai message de GFS
 // (`ambianceMessage('pop', '#6d4fd6')`, GFS à b3513f5) ; ce que GFS envoie vraiment se mesure dans son labo (`run-theme.mjs`, `run-ambiance-kit.mjs`), avec une app.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { COLOR_TOKENS, SHAPE_TOKENS, normalizeAmbiance } from '../js/ambiance-message.js';
-import { paintAmbiance, createAmbiance } from '../js/ambiance.js';
+import { paintAmbiance, createAmbiance } from '../js/ambiance-pose.js';
+import { Ambiance } from '../js/ambiance.js';
 
 const SAMPLE = JSON.parse(readFileSync(new URL('./ambiance-exemple.json', import.meta.url), 'utf8'));
 const sample = () => structuredClone(SAMPLE);
@@ -201,4 +202,28 @@ test('start sans matchMedia (un navigateur sans lui) : le reste marche', () => {
   assert.equal(html.props.get('--accent'), SAMPLE.clair['--accent']);
   handle.stop();
   assert.equal(html.props.size, 0);
+});
+
+test('createAmbiance demande un lien (ambiance, onAmbiance) et un mode (isDark) : sans eux, une erreur qui le dit, jamais une pose à moitié', () => {
+  const link = { ambiance: () => null, onAmbiance: () => () => {}, ready: Promise.resolve() };
+  for (const options of [undefined, {}, { link }, { isDark: () => false }, { link: {}, isDark: () => false }, { link: { ambiance: () => null }, isDark: () => false }, { link, isDark: true }]) {
+    assert.throws(() => createAmbiance(options), /`link` .* et `isDark\(\)` sont demandés/);
+  }
+});
+
+test('repaint : le mode de l\'app a changé par un autre chemin que les attributs de <html> ou le système (une classe) : la pose est refaite pour le mode affiché', () => {
+  const page = setup({ message: normalizeAmbiance(sample()) });
+  const handle = page.ambiance.start();
+  page.state.dark = true;
+  assert.equal(page.html.props.get('--accent'), SAMPLE.clair['--accent'], 'sans rien dire, la page garde le mode d\'avant');
+  handle.repaint();
+  assert.equal(page.html.props.get('--accent'), SAMPLE.sombre['--accent']);
+  assert.equal(page.html.props.size, 19 + Object.keys(SAMPLE.forme).length);
+});
+
+test('une app qui a son propre lien : `ambiance-pose.js` n\'importe ni le lien du kit ni son thème, et `ambiance.js` y branche les deux', () => {
+  const imports = file => [...readFileSync(new URL(`../js/${file}`, import.meta.url), 'utf8').matchAll(/^import .* from '([^']+)';$/gm)].map(match => match[1]).sort();
+  assert.deepEqual(imports('ambiance-pose.js'), ['./once.js'], 'un deuxième lien dans un cadre numéroterait ses appels depuis 1 comme le premier et prendrait ses réponses (retrouvées par leur seul `id`)');
+  assert.deepEqual(imports('ambiance.js'), ['./ambiance-pose.js', './gfs-link.js', './once.js', './theme.js']);
+  assert.equal(typeof Ambiance.start, 'function');
 });

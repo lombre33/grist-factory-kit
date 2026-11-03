@@ -118,11 +118,22 @@ await ambiance.ready;                // facultatif : le contexte est arrivé et 
 ```
 
 - **Ce qu'elle pose** : sur `<html>`, par le CSSOM, les dix-neuf jetons de couleur du mode que l'app affiche (`--bg`, `--surface`, `--accent`… et quatre de décor : `--accent-2`, `--accent-3`, `--accent-end`, `--hard`) et les jetons de forme (arrondis `--radius-*`, traits, ombres, polices, fonds). Les feuilles du kit et celles de l'app qui lisent ces jetons suivent sans rien changer ; une app qui n'en lit pas un garde sa forme et prend les couleurs.
-- **Ce qu'elle suit** : GFS (un événement par geste de la personne) et le mode de l'app (son thème, puis celui de Grist, puis le système : `js/theme.js`) sans que GFS dise rien.
+- **Ce qu'elle suit** : GFS (un événement par geste de la personne) et le mode de l'app (son thème, puis celui de Grist, puis le système : `js/theme.js`) sans que GFS dise rien. Un mode qui change autrement (une classe) se redit par `ambiance.repaint()`.
 - **Ce qu'elle retire** : quand GFS dit `null` (rien n'est choisi), tout ce qu'elle avait posé, et rien d'autre ; `ambiance.stop()` fait de même.
 - **Ce qu'elle refuse** : un jeton qu'elle ne connaît pas (les listes `COLOR_TOKENS` et `SHAPE_TOKENS` de `js/ambiance-message.js`), une couleur qui n'est pas un `#rrggbb`, une valeur de forme qui porte `;`, `{`, `}`, `url(` ou `@import`.
 - **Seule**, l'app n'a pas d'ambiance : rien n'est posé. Et l'ambiance ne vaut que pour ce que l'app affiche à la personne, **jamais pour ce qu'elle produit** (un e-mail, un PDF, un document, un formulaire public).
-- `GfsLink.ambiance()` et `GfsLink.onAmbiance(fn)` donnent le message lu, pour une app qui veut en faire autre chose (la couleur libre de la personne, `couleur`, pour un graphique) ; `createAmbiance({ link, doc, win, isDark })` en fait un autre pour un essai.
+- `GfsLink.ambiance()` et `GfsLink.onAmbiance(fn)` donnent le message lu, pour une app qui veut en faire autre chose (la couleur libre de la personne, `couleur`, pour un graphique).
+- **Une app qui a son propre lien avec GFS** (Publipostage+) n'importe pas `js/ambiance.js` : il démarrerait le lien du kit à côté du sien, et deux liens dans un même cadre numérotent chacun leurs appels depuis 1 et se prendraient les réponses (retrouvées par leur seul `id`). Elle donne le sien à `js/ambiance-pose.js` (qui n'importe ni le lien ni le thème du kit) :
+
+```js
+import { normalizeAmbiance } from './kit/js/ambiance-message.js';   // dans son lien : lire `contexte.ambiance` et l'événement `ambiance` par cette fonction
+import { createAmbiance } from './kit/js/ambiance-pose.js';
+
+// link : { ambiance() → message lu par normalizeAmbiance, ou null ; onAmbiance(fn) → de quoi se désabonner ; ready : le contexte de GFS est arrivé }, isDark() → l'app affiche son mode sombre
+const ambiance = createAmbiance({ link: monLien, isDark: () => monThemeEstSombre() }).start();
+```
+
+`createAmbiance({ link, isDark, doc, win })` demande `link` et `isDark` (une erreur sinon) ; `doc` et `win` sont la page, pour un essai.
 
 ## Ce que contient le kit
 
@@ -142,7 +153,8 @@ await ambiance.ready;                // facultatif : le contexte est arrivé et 
 | `js/color-math.js` | `ColorMath` : conversions (`#rrggbb`, rgb, teinte-saturation-luminosité), luminance, contraste WCAG, encre lisible sur une couleur. |
 | `js/color-strings.js` | Les textes `kit.color.*` du sélecteur, que `js/i18n.js` ajoute à ceux du kit. |
 | `js/gfs-link.js` | `GfsLink` : le lien avec GFS (ci-dessus). `createGfsLink` pour un lien à soi. |
-| `js/ambiance.js` | `Ambiance.start()` : pose l'ambiance de GFS sur la page de l'app et la suit (ci-dessus). `createAmbiance`, `paintAmbiance` pour un essai. |
+| `js/ambiance.js` | `Ambiance.start()` : pose l'ambiance de GFS sur la page de l'app et la suit, avec le lien et le thème du kit (ci-dessus). |
+| `js/ambiance-pose.js` | `createAmbiance({ link, isDark })` : la même pose avec le lien et le mode qu'on lui donne (une app qui a son propre lien avec GFS) ; `paintAmbiance` pour un essai. N'importe ni le lien ni le thème du kit. |
 | `js/ambiance-message.js` | `normalizeAmbiance(message)` : le message d'ambiance lu avec méfiance ; `COLOR_TOKENS` et `SHAPE_TOKENS` : les jetons que l'app connaît. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
@@ -167,7 +179,7 @@ Prévu au plan de GFS (cahier, 4.5), pas encore dans le kit, parce que le premie
 ## Contrôles
 
 ```sh
-npm test                    # 98 essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, ambiance, hygiène du code
+npm test                    # 101 essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, ambiance, hygiène du code
 npm run test:navigateur     # Chromium (Playwright), 700 × 400, souris et clavier, clair et sombre, français et anglais
 KIT_ONLY=couleur npm run test:navigateur   # seulement les essais dont le nom contient « couleur »
 ```
