@@ -2,6 +2,16 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.6.0 : l'ambiance de GFS (03/11/2026)
+
+La personne choisit dans GFS une ambiance (Grist Factory, Pop, Papier, Brut, Néon) et, si elle veut, sa propre couleur ; GFS la donne à toutes ses apps (contrats de GFS, 5.2 point 10). Ce qui la pose sur la page d'une app est écrit ici une fois, pour que Publipostage+, Form+, Automation+, Grist-BI et Thusday n'aient pas chacun leur version. Rien ne change pour une app qui n'importe pas `js/ambiance.js` : elle garde ses couleurs.
+
+- **Lire l'ambiance** : `GfsLink.ambiance()` rend `{ id, couleur, ajustee, clair, sombre, forme }` ou `null` (rien n'est choisi, l'app est seule, ou GFS est d'avant l'ambiance) ; `GfsLink.onAmbiance(fn)` rappelle l'abonné à l'arrivée du contexte et à chaque changement, avec sa propre copie.
+- **Le message lu avec méfiance** (`js/ambiance-message.js`, `normalizeAmbiance`) : les dix-neuf jetons de couleur de chaque mode (`COLOR_TOKENS`) et les trente-sept jetons de forme (`SHAPE_TOKENS`) sont les seuls qu'une app pose ; une couleur doit être un `#rrggbb`, une valeur de forme ne porte ni `;`, ni `{`, ni `}`, ni `url(`, ni `@import`, et fait 600 caractères au plus ; ce qui n'a pas d'`id` de la forme attendue ou aucun jeton de couleur valable vaut `null`.
+- **La poser** (`Ambiance.start()`, `js/ambiance.js`) : au démarrage de l'app, une fois. Elle pose sur `<html>`, par le CSSOM, les jetons du mode que l'app affiche et ceux de forme ; les feuilles du kit et celles de l'app qui les lisent suivent. Elle suit GFS (un événement par geste) et le mode de l'app (son thème, celui de Grist, la préférence du système) sans que GFS dise rien ; sur `null`, elle retire ce qu'elle avait posé, et seulement cela. `ambiance.ready` se règle quand le contexte est arrivé et que l'ambiance est posée. `ambiance.stop()` retire tout. `createAmbiance({ link, doc, win, isDark })` en fait une autre pour un essai.
+- **Ce qu'elle ne fait pas** : poser l'ambiance dans ce que l'app produit (un e-mail, un PDF, un document, un formulaire public) : elle ne vaut que pour ce que l'app montre à la personne.
+- **Essais** : 98 sous Node (19 de plus : 15 pour le message et la pose, 4 pour le lien) ; dans Chromium, 6 vérifications de plus (606 en tout) sur le cadre isolé comme chez GFS (`sandbox="allow-scripts"`, politique d'une app hébergée) : le message se pose par le CSSOM sans erreur de politique, le mode de l'app change et les jetons suivent, `null` retire tout, une couleur qui n'en est pas une et une valeur qui sort de sa déclaration ne sont pas posées. La liste des jetons est accordée avec le moteur de GFS par un essai de GFS ; ce que GFS envoie vraiment se mesure dans son labo, avec une app qui pose l'ambiance par ce module.
+
 ## 0.5.0 : le sélecteur de couleur (03/11/2026)
 
 Le menu de couleur et la fenêtre « Couleur personnalisée » de Publipostage+ (`js/color-palette.js`, `js/color-dialog.js`, `css/color-palette.css` et le calcul de ses essais, repris à `134d043` ; la rangée « Couleurs du thème » à `35fc21a`), pour que Form+, Automation+, Grist-BI, Thusday et GFS (la couleur libre de son thème) aient les mêmes, sans les recopier. Rien ne change pour une app qui ne l'importe pas.

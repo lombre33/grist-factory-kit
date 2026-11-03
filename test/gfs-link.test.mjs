@@ -368,3 +368,56 @@ test('identité : le contexte d\'un GFS d\'avant (sans `identite`) et l\'app seu
   alone.onIdentity(value => calls.push(value))();
   assert.deepEqual(calls, [], 'seule : rien n\'est écouté, aucun appel');
 });
+
+// Le message d'ambiance (5.2, point 10), réduit : GFS en donne dix-neuf jetons de couleur par mode et les jetons de forme (test/ambiance.test.mjs lit un vrai message).
+const AMBIANCE = { id: 'pop', couleur: '#6d4fd6', ajustee: false, clair: { '--bg': '#eae9ff', '--accent': '#6d4fd6' }, sombre: { '--bg': '#16132a', '--accent': '#9a85ff' }, forme: { '--radius-md': '14px' } };
+
+test('ambiance : le contexte la donne, l\'événement la change une fois par vrai changement ; une forme inconnue vaut null', async () => {
+  const none = await hosted({ ...CONTEXT, ambiance: null });
+  assert.equal(none.link.ambiance(), null, 'rien n\'est choisi : l\'app garde ses couleurs');
+  const { fake, link } = await hosted({ ...CONTEXT, ambiance: AMBIANCE });
+  assert.deepEqual(link.ambiance(), AMBIANCE);
+  const seen = [];
+  const stop = link.onAmbiance(value => seen.push(value));
+  const event = data => fake.deliver({ gfs: 0, type: 'evenement', nom: 'ambiance', data });
+  event({ ambiance: structuredClone(AMBIANCE) });
+  event({ ambiance: { ...AMBIANCE, id: 'brut', couleur: null } });
+  event({ ambiance: { ...AMBIANCE, id: 'brut', couleur: null } });
+  event({ ambiance: 'brut' });
+  event({ ambiance: null });
+  event({ ambiance: { ...AMBIANCE, id: 'neon' } });
+  event({ ambiance: { id: 'neon' } });
+  stop();
+  event({ ambiance: { ...AMBIANCE, id: 'papier' } });
+  assert.deepEqual(seen.map(value => value && value.id), ['brut', null, 'neon', null], 'un abonné par vrai changement (le même message redit n\'en est pas un)');
+  assert.deepEqual(link.ambiance().id, 'papier', 'le lien garde la dernière, même désabonné');
+});
+
+test('ambiance : le contexte rappelle l\'abonné, la valeur rendue est une copie', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 1000 });
+  const seen = [];
+  link.onAmbiance(value => seen.push(value));
+  fake.replyTo('contexte', structuredClone({ ...CONTEXT, ambiance: AMBIANCE }));
+  await link.ready;
+  assert.deepEqual(seen, [AMBIANCE]);
+  link.ambiance().clair['--accent'] = '#000000';
+  assert.equal(link.ambiance().clair['--accent'], '#6d4fd6');
+});
+
+test('ambiance : le contexte d\'un GFS d\'avant (sans `ambiance`) et l\'app seule la laissent à null', async () => {
+  const { link } = await hosted(CONTEXT);
+  assert.equal(link.ambiance(), null);
+  const alone = createGfsLink({ host: { location: { search: '' } } });
+  await alone.ready;
+  assert.equal(alone.ambiance(), null);
+  const calls = [];
+  alone.onAmbiance(value => calls.push(value))();
+  assert.deepEqual(calls, [], 'seule : rien n\'est écouté, aucun appel');
+});
+
+test('ambiance : l\'événement d\'un autre cadre n\'est pas lu', async () => {
+  const { fake, link } = await hosted(CONTEXT);
+  fake.deliver({ gfs: 0, type: 'evenement', nom: 'ambiance', data: { ambiance: AMBIANCE } }, { postMessage() {} });
+  assert.equal(link.ambiance(), null);
+});

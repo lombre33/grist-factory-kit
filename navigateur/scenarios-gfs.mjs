@@ -1,6 +1,8 @@
 // Le lien avec GFS (js/gfs-link.js) dans un vrai navigateur : le cadre de l'app isolé comme chez GFS (sandbox="allow-scripts", sans allow-same-origin : origine opaque, aucun
 // stockage à lui), sous la politique d'une app hébergée, face à une page qui joue GFS (navigateur/gfs-hote.html). Ce que GFS envoie vraiment se mesure dans le labo de GFS, avec l'app.
-import { check } from './aide.mjs';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { check, ROOT } from './aide.mjs';
 
 const fromApp = async (page, test) => (await page.evaluate(() => window.hote.received())).filter(entry => entry.from === 'app' && test(entry.data)).map(entry => entry.data);
 
@@ -81,5 +83,36 @@ export async function gfsLink(env) {
   const refused = await app.evaluate(() => window.cadre.link);
   check('« ouvrir » part avec { app, fichier: { id (texte), type } } ; un fichier disparu rejette avec son code, jamais avec le lien lui-même',
     opens.length === 1 && JSON.stringify(opens[0].args) === JSON.stringify({ app: 'publipostage', fichier: { id: '12', type: 'document' } }) && refused === 'GFS_INTROUVABLE', { opens, refused });
+  await ambiance(page, app);
   await context.close();
+}
+
+// L'ambiance de GFS (5.2, point 10) : GFS la donne par l'événement `ambiance` (ici un vrai message, test/ambiance-exemple.json) ; l'app la pose par le CSSOM, la politique `style-src 'self'` de sa page ne laissant
+// passer aucun attribut `style` écrit d'après un message ; elle suit son mode (le thème de l'app) et retire tout sur `null`.
+async function ambiance(page, app) {
+  const sample = JSON.parse(await readFile(join(ROOT, 'test', 'ambiance-exemple.json'), 'utf8'));
+  const look = () => app.evaluate(() => {
+    const root = document.documentElement;
+    const css = getComputedStyle(root);
+    return { accent: css.getPropertyValue('--accent').trim(), radius: css.getPropertyValue('--radius-md').trim(), inline: [...root.style].filter(name => name.startsWith('--')).length, seen: window.cadre.seen.ambiance.slice() };
+  });
+  const send = data => page.evaluate(message => window.hote.send({ gfs: 0, type: 'evenement', nom: 'ambiance', data: { ambiance: message } }), data);
+  let now = await look();
+  check('avant tout message d\'ambiance, l\'app n\'a posé aucun jeton', now.inline === 0 && now.accent === '' && now.seen.length === 0, now);
+  await send(sample);
+  now = await until(async () => { const value = await look(); return value.inline > 0 ? value : null; });
+  check('l\'événement « ambiance » est posé sur la page par le CSSOM : les dix-neuf jetons de couleur du mode clair et les jetons de forme (sans erreur de politique de sécurité)',
+    Boolean(now) && now.accent === sample.clair['--accent'] && now.radius === sample.forme['--radius-md'] && now.inline === 19 + Object.keys(sample.forme).length && JSON.stringify(now.seen) === '["pop"]', now);
+  await app.evaluate(() => window.cadre.Theme.set('dark'));
+  now = await until(async () => { const value = await look(); return value.accent === sample.sombre['--accent'] ? value : null; });
+  check('le mode de l\'app change (son thème) : les jetons suivent sans que GFS dise rien, la forme reste, rien de plus n\'est posé', Boolean(now) && now.radius === sample.forme['--radius-md'] && now.inline === 19 + Object.keys(sample.forme).length && now.seen.length === 1, now);
+  await app.evaluate(() => window.cadre.Theme.set('light'));
+  now = await until(async () => { const value = await look(); return value.accent === sample.clair['--accent'] ? value : null; });
+  check('et revient en clair', Boolean(now), now);
+  await send(null);
+  now = await until(async () => { const value = await look(); return value.inline === 0 ? value : null; });
+  check('`null` retire tout ce que l\'app avait posé : le retour à ses couleurs', Boolean(now) && now.accent === '' && JSON.stringify(now.seen) === '["pop",null]', now);
+  await send({ ...sample, clair: { ...sample.clair, '--accent': 'red' }, forme: { ...sample.forme, '--radius-md': '1px; background: red', '--wash': 'url(https://example.com/x.png)' } });
+  now = await until(async () => { const value = await look(); return value.inline > 0 ? value : null; });
+  check('une couleur qui n\'en est pas une et une valeur de forme qui sort de sa déclaration ne sont pas posées, le reste l\'est', Boolean(now) && now.accent === '' && now.radius === '' && now.inline === 19 + Object.keys(sample.forme).length - 3, now);
 }

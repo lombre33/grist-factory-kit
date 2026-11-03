@@ -10,6 +10,7 @@
 //   GfsLink.bar(), GfsLink.onBar(fn)             // { bord, epaisseur, zone } : ce que la barre de GFS recouvre et que l'app laisse libre, ou null (5.2 point 7)
 //   GfsLink.hideBar(true | false)                // l'app demande à ne pas avoir la barre (un diaporama plein cadre), puis la rend
 //   GfsLink.identity(), GfsLink.onIdentity(fn)   // { email } : l'adresse e-mail de la personne, que GFS ne donne qu'à l'app qui l'a déclarée (`permissions.identite`), ou null (5.2 point 9)
+//   GfsLink.ambiance(), GfsLink.onAmbiance(fn)   // l'ambiance et la couleur que la personne a choisies pour GFS et ses apps (js/ambiance-message.js), ou null : rien n'est choisi (5.2 point 10) ; js/ambiance.js la pose
 //   GfsLink.storageGet(clé), GfsLink.storageSet(clé, texte | null)   // les choix de la personne : chez GFS (le cadre n'a pas de stockage à lui, 5.3), dans le navigateur seule
 //   GfsLink.extensions(), GfsLink.library(id), GfsLink.onExtensions(fn), GfsLink.install(id)   // les extensions actives, la source de leurs bibliothèques (5.2 point 4, 5.4)
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
@@ -17,10 +18,11 @@
 // `choose` et `openFile` sont les liens entre apps : l'app garde la clé { app, id, type } que `choose` rend (le nom n'est qu'une étiquette) et la rend à `openFile` ; un fichier disparu rejette `openFile`
 // avec `GFS_INTROUVABLE`, une personne qui ne débloque pas l'app avec `GFS_ANNULE`, jamais le lien lui-même.
 // Chaque abonné (`on…`) est rappelé quand la valeur change, l'arrivée du contexte comprise, et chaque `on…` rend de quoi se désabonner. Seule, l'app n'écoute ni n'envoie rien : le
-// contexte, l'ouverture, la langue, la barre et l'identité sont null, les extensions vides. Un message n'est lu que s'il vient du cadre parent (`event.source`) et porte le contrat de GFS ;
+// contexte, l'ouverture, la langue, la barre, l'identité et l'ambiance sont null, les extensions vides. Un message n'est lu que s'il vient du cadre parent (`event.source`) et porte le contrat de GFS ;
 // l'écoute passe par addEventListener, jamais par `window.onmessage =`, qui remplacerait celle du script d'API de Grist.
 import { once } from './once.js';
 import { hostContract } from './host.js';
+import { normalizeAmbiance } from './ambiance-message.js';
 
 once('gfs-link', import.meta.url);
 
@@ -29,7 +31,7 @@ const CONTEXT_TIMEOUT_MS = 5000;                 // 5.1, point 4 : l'app attend 
 const ID = /^[a-z][a-z0-9_-]{0,63}$/;            // un identifiant d'extension ou de bibliothèque
 const STORAGE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;   // 5.3, point 2 : la forme d'une clé, la même seule et dans GFS
 const EDGES = ['gauche', 'haut', 'droite', 'bas'];
-// Les champs du contexte qui ne changent pas tant que le cadre vit ; la langue, la barre, l'identité, les extensions, l'ouverture et le stockage ont chacun leur lecture.
+// Les champs du contexte qui ne changent pas tant que le cadre vit ; la langue, la barre, l'identité, l'ambiance, les extensions, l'ouverture et le stockage ont chacun leur lecture.
 const FIXED = ['contrat', 'hote', 'instance', 'document', 'page', 'section', 'adresseWidget', 'culture', 'fuseau', 'devise', 'lectureSeule', 'acces'];
 
 const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -119,6 +121,12 @@ function setIdentity(link, raw) {
   link.identity = next;
   notify(link.listeners.identity, () => copy(next));
 }
+function setAmbiance(link, raw) {
+  const next = normalizeAmbiance(raw);
+  if (same(next, link.ambiance)) return;
+  link.ambiance = next;
+  notify(link.listeners.ambiance, () => copy(next));
+}
 function setExtensions(link, data) {
   const extensions = normalizeExtensions(data.extensions);
   const libraries = normalizeLibraries(data.bibliotheques);
@@ -139,13 +147,14 @@ function applyContext(link, data) {
   setLanguage(link, data.langue);
   setBar(link, data.barre);
   setIdentity(link, data.identite);
+  setAmbiance(link, data.ambiance);
   setExtensions(link, data);
 }
 
-// Les quatre événements de GFS (5.2, points 2 et 9), chacun avec son corps ; un autre est ignoré (5.1, point 3).
+// Les cinq événements de GFS (5.2, points 2, 9 et 10), chacun avec son corps ; un autre est ignoré (5.1, point 3).
 const EVENTS = {
   langue: (link, data) => setLanguage(link, data.langue), barre: (link, data) => setBar(link, data.barre),
-  identite: (link, data) => setIdentity(link, data.identite), extensions: setExtensions,
+  identite: (link, data) => setIdentity(link, data.identite), ambiance: (link, data) => setAmbiance(link, data.ambiance), extensions: setExtensions,
 };
 function applyEvent(link, name, data) {
   if (!isObject(data) || !Object.hasOwn(EVENTS, name)) return;
@@ -304,8 +313,8 @@ function newLink(host) {
   const contract = framed ? hostContract(host.location && host.location.search) : null;
   return {
     host, contract, hosted: contract !== null, known: false, nextId: 1,
-    context: null, opening: null, language: null, bar: null, identity: null, storage: null, extensions: [], libraries: new Map(),
-    listeners: { language: new Set(), bar: new Set(), identity: new Set(), extensions: new Set() },
+    context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, storage: null, extensions: [], libraries: new Map(),
+    listeners: { language: new Set(), bar: new Set(), identity: new Set(), ambiance: new Set(), extensions: new Set() },
     pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [],
   };
 }
@@ -331,6 +340,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     language: () => link.language,
     bar: () => copy(link.bar),
     identity: () => copy(link.identity),
+    ambiance: () => copy(link.ambiance),
     extensions: () => link.extensions.slice(),
     library: id => copy(link.libraries.get(id)),
     storageGet: key => storageGet(link, key),
@@ -345,6 +355,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     onLanguage: fn => subscribe(link.listeners.language, fn),
     onBar: fn => subscribe(link.listeners.bar, fn),
     onIdentity: fn => subscribe(link.listeners.identity, fn),
+    onAmbiance: fn => subscribe(link.listeners.ambiance, fn),
     onExtensions: fn => subscribe(link.listeners.extensions, fn),
   });
 }

@@ -1,8 +1,8 @@
 # Grist Factory Kit
 
-Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, et le lien avec GFS, le widget qui héberge les apps. Des modules ES pour le navigateur et trois feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
+Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, le lien avec GFS, le widget qui héberge les apps, et l'ambiance qu'il leur donne. Des modules ES pour le navigateur et trois feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
 
-Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.5.0** ([CHANGELOG](CHANGELOG.md)).
+Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.6.0** ([CHANGELOG](CHANGELOG.md)).
 
 Le kit est la couche du bas : il n'importe rien (ni app, ni GFS, ni bibliothèque). Une app importe le kit, jamais une autre app ; une extension importe son app et le kit, jamais une autre extension.
 
@@ -12,8 +12,8 @@ Référencer le kit à une étiquette (un commit à part dans l'app, relu) :
 
 ```sh
 git submodule add https://github.com/lombre33/grist-factory-kit.git kit
-git -C kit checkout v0.5.0
-git add kit && git commit -m "Kit v0.5.0"
+git -C kit checkout v0.6.0
+git add kit && git commit -m "Kit v0.6.0"
 ```
 
 Dans la page, les deux feuilles avant celle de l'app :
@@ -62,6 +62,7 @@ await GfsLink.openFile({ app: lien.app, id: lien.id, type: lien.type });        
 - **Le contexte** (`GfsLink.context()`) garde ses champs connus (document, page, accès, lecture seule…) et rien d'autre ; chaque `on…` rappelle son abonné quand la valeur change vraiment, avec sa propre copie, et rend de quoi se désabonner.
 - **Les choix de la personne** : dans GFS, le cadre de l'app n'a pas de stockage à lui ; `storageGet` lit la copie que le contexte a rendue, `storageSet` la change et l'envoie à GFS (`valeur` null retire la clé). Une clé fait 1 à 64 caractères parmi lettres, chiffres, `_ . : -`, une valeur est un texte. Seule, les deux passent par le navigateur, qui peut refuser sans rien casser.
 - **La barre de GFS** se pose par-dessus le cadre de l'app : l'app écarte de `zone` ce qu'elle met à ce bord, sans réserver de bande. `GfsLink.hideBar(true)` la retire pour un diaporama plein cadre, qui offre alors sa propre sortie (Échap), puis `hideBar(false)`.
+- **L'ambiance** : `ambiance()` rend le message d'ambiance que la personne a choisi pour GFS et ses apps (`{ id, couleur, ajustee, clair, sombre, forme }`, jetons connus et valeurs vérifiées seulement), ou `null` : rien n'est choisi, l'app garde ses couleurs. `Ambiance.start()` (ci-dessous) la pose.
 - **L'identité** : `identity()` rend `{ email }`, l'adresse e-mail de la personne connectée, ou `null`. GFS ne la donne qu'à l'app qui l'a déclarée dans son manifeste (`permissions.identite`, avec sa raison en français et en anglais) et seulement quand il la connaît ; `null` veut donc dire « pas déclarée », « GFS ne la connaît pas » ou « app seule », sans que l'app puisse le distinguer : elle fait alors comme seule (sa propre table d'essai, avec l'accord de la personne, ou un choix de la personne gardé par `storageSet`). `onIdentity(fn)` rappelle l'abonné quand GFS l'apprend après le contexte. L'adresse montre et retrouve ses données, elle ne décide d'aucun droit : c'est Grist qui accepte ou refuse.
 - **Les extensions** : `extensions()`, `library(id)` (la source de chaque bibliothèque, avec son empreinte), `onExtensions(fn)`, et `install(id)`, qui ouvre la fenêtre d'installation de GFS à la ligne de l'extension (le clic sur une fonction grisée).
 - **Les liens entre apps** : `choose({ types, apps?, titre? })` fait désigner un fichier d'une autre app dans l'explorateur de GFS (`types` : ceux que les apps offrent à choisir ; `titre` : le texte que GFS montre, déjà traduit) et rend `{ app, id, nom, type }`, ou `null` si la personne annule. L'app garde la clé `{ app, id, type }` (le nom n'est qu'une étiquette) et la rend à `openFile(clé)`, qui rend `true` quand l'app visée a ouvert le fichier ; dans une autre app que la sienne, celle-ci prend sa place (une seule à la fois) et la promesse ne se règle pas. Un fichier disparu rejette avec `GFS_INTROUVABLE`, une app que la personne ne débloque pas avec `GFS_ANNULE`, une demande mal formée ou un second choix en même temps avec `GFS_REFUSE` : l'app ne supprime jamais un lien d'elle-même. Seule, les deux rejettent (`GFS absent`) : l'app grise « Lier un fichier ».
@@ -105,6 +106,24 @@ palette.focus();                               // le clavier sur la pastille mar
 - **Les textes** : les clés `kit.color.*` du kit, en français et en anglais ; `t` (option du menu, de la fenêtre et de l'éditeur) prend un traducteur à soi (`createI18n`). Les noms des rangées et celui de « sans couleur » sont ceux de l'app.
 - **Aucun style en ligne** : la couleur d'une pastille passe par le CSSOM, et la feuille n'a de couleur à elle que pour le carré, la teinte et leurs curseurs (celles qu'on choisit).
 
+## L'ambiance de GFS
+
+La personne choisit dans GFS une ambiance (Grist Factory, Pop, Papier, Brut, Néon) et, si elle veut, sa propre couleur : un seul choix, pour GFS et pour toutes ses apps (contrats de GFS, 5.2 point 10). `Ambiance.start()` le pose sur la page de l'app :
+
+```js
+import { Ambiance } from './kit/js/ambiance.js';
+
+const ambiance = Ambiance.start();   // une fois, au démarrage de l'app (le module d'entrée) ; deux appels rendent le même
+await ambiance.ready;                // facultatif : le contexte est arrivé et l'ambiance est posée, l'app s'affiche sans repeindre
+```
+
+- **Ce qu'elle pose** : sur `<html>`, par le CSSOM, les dix-neuf jetons de couleur du mode que l'app affiche (`--bg`, `--surface`, `--accent`… et quatre de décor : `--accent-2`, `--accent-3`, `--accent-end`, `--hard`) et les jetons de forme (arrondis `--radius-*`, traits, ombres, polices, fonds). Les feuilles du kit et celles de l'app qui lisent ces jetons suivent sans rien changer ; une app qui n'en lit pas un garde sa forme et prend les couleurs.
+- **Ce qu'elle suit** : GFS (un événement par geste de la personne) et le mode de l'app (son thème, puis celui de Grist, puis le système : `js/theme.js`) sans que GFS dise rien.
+- **Ce qu'elle retire** : quand GFS dit `null` (rien n'est choisi), tout ce qu'elle avait posé, et rien d'autre ; `ambiance.stop()` fait de même.
+- **Ce qu'elle refuse** : un jeton qu'elle ne connaît pas (les listes `COLOR_TOKENS` et `SHAPE_TOKENS` de `js/ambiance-message.js`), une couleur qui n'est pas un `#rrggbb`, une valeur de forme qui porte `;`, `{`, `}`, `url(` ou `@import`.
+- **Seule**, l'app n'a pas d'ambiance : rien n'est posé. Et l'ambiance ne vaut que pour ce que l'app affiche à la personne, **jamais pour ce qu'elle produit** (un e-mail, un PDF, un document, un formulaire public).
+- `GfsLink.ambiance()` et `GfsLink.onAmbiance(fn)` donnent le message lu, pour une app qui veut en faire autre chose (la couleur libre de la personne, `couleur`, pour un graphique) ; `createAmbiance({ link, doc, win, isDark })` en fait un autre pour un essai.
+
 ## Ce que contient le kit
 
 | Fichier | Ce qu'il donne |
@@ -123,6 +142,8 @@ palette.focus();                               // le clavier sur la pastille mar
 | `js/color-math.js` | `ColorMath` : conversions (`#rrggbb`, rgb, teinte-saturation-luminosité), luminance, contraste WCAG, encre lisible sur une couleur. |
 | `js/color-strings.js` | Les textes `kit.color.*` du sélecteur, que `js/i18n.js` ajoute à ceux du kit. |
 | `js/gfs-link.js` | `GfsLink` : le lien avec GFS (ci-dessus). `createGfsLink` pour un lien à soi. |
+| `js/ambiance.js` | `Ambiance.start()` : pose l'ambiance de GFS sur la page de l'app et la suit (ci-dessus). `createAmbiance`, `paintAmbiance` pour un essai. |
+| `js/ambiance-message.js` | `normalizeAmbiance(message)` : le message d'ambiance lu avec méfiance ; `COLOR_TOKENS` et `SHAPE_TOKENS` : les jetons que l'app connaît. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
 
@@ -146,7 +167,7 @@ Prévu au plan de GFS (cahier, 4.5), pas encore dans le kit, parce que le premie
 ## Contrôles
 
 ```sh
-npm test                    # 79 essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, hygiène du code
+npm test                    # 98 essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, ambiance, hygiène du code
 npm run test:navigateur     # Chromium (Playwright), 700 × 400, souris et clavier, clair et sombre, français et anglais
 KIT_ONLY=couleur npm run test:navigateur   # seulement les essais dont le nom contient « couleur »
 ```
