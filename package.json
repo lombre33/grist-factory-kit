@@ -1,6 +1,6 @@
 {
   "name": "grist-factory-kit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Kit commun des apps Grist Factory : jetons de la charte, thème, traduction français / anglais, fenêtres, saisies et confirmations, couches, lien avec GFS. Modules ES pour le navigateur, aucune bibliothèque.",

@@ -12,8 +12,8 @@ Référencer le kit à une étiquette (un commit à part dans l'app, relu) :
 
 ```sh
 git submodule add https://github.com/lombre33/grist-factory-kit.git kit
-git -C kit checkout v0.3.0
-git add kit && git commit -m "Kit v0.3.0"
+git -C kit checkout v0.4.0
+git add kit && git commit -m "Kit v0.4.0"
 ```
 
 Dans la page, les deux feuilles avant celle de l'app :
@@ -53,6 +53,7 @@ const wanted = GfsLink.opening();                      // ce que GFS demande d'o
 GfsLink.onOpen(async ({ fichier, type }) => openFile(fichier, type));   // le double-clic sur un autre fichier, l'app déjà ouverte : rendre vrai une fois ouvert
 GfsLink.onLanguage(language => I18n.setLanguage(language));
 GfsLink.onBar(bar => keepClear(bar));                  // ce que la barre de GFS recouvre : { bord, epaisseur, zone } ou null
+GfsLink.onIdentity(person => showMine(person));        // l'adresse e-mail de la personne : { email } ou null (GFS ne la donne qu'à l'app qui l'a déclarée)
 GfsLink.storageSet('monapp_zoom', '1.2');              // les choix de la personne : chez GFS, ou dans le navigateur seule
 const lien = await GfsLink.choose({ types: ['document', 'grille'], titre: I18n.t('monapp.pick') });   // un fichier d'une autre app : { app, id, nom, type }, ou null si la personne annule
 await GfsLink.openFile({ app: lien.app, id: lien.id, type: lien.type });                             // GFS l'ouvre dans son app, plus tard, par la clé gardée
@@ -61,6 +62,7 @@ await GfsLink.openFile({ app: lien.app, id: lien.id, type: lien.type });        
 - **Le contexte** (`GfsLink.context()`) garde ses champs connus (document, page, accès, lecture seule…) et rien d'autre ; chaque `on…` rappelle son abonné quand la valeur change vraiment, avec sa propre copie, et rend de quoi se désabonner.
 - **Les choix de la personne** : dans GFS, le cadre de l'app n'a pas de stockage à lui ; `storageGet` lit la copie que le contexte a rendue, `storageSet` la change et l'envoie à GFS (`valeur` null retire la clé). Une clé fait 1 à 64 caractères parmi lettres, chiffres, `_ . : -`, une valeur est un texte. Seule, les deux passent par le navigateur, qui peut refuser sans rien casser.
 - **La barre de GFS** se pose par-dessus le cadre de l'app : l'app écarte de `zone` ce qu'elle met à ce bord, sans réserver de bande. `GfsLink.hideBar(true)` la retire pour un diaporama plein cadre, qui offre alors sa propre sortie (Échap), puis `hideBar(false)`.
+- **L'identité** : `identity()` rend `{ email }`, l'adresse e-mail de la personne connectée, ou `null`. GFS ne la donne qu'à l'app qui l'a déclarée dans son manifeste (`permissions.identite`, avec sa raison en français et en anglais) et seulement quand il la connaît ; `null` veut donc dire « pas déclarée », « GFS ne la connaît pas » ou « app seule », sans que l'app puisse le distinguer : elle fait alors comme seule (sa propre table d'essai, avec l'accord de la personne, ou un choix de la personne gardé par `storageSet`). `onIdentity(fn)` rappelle l'abonné quand GFS l'apprend après le contexte. L'adresse montre et retrouve ses données, elle ne décide d'aucun droit : c'est Grist qui accepte ou refuse.
 - **Les extensions** : `extensions()`, `library(id)` (la source de chaque bibliothèque, avec son empreinte), `onExtensions(fn)`, et `install(id)`, qui ouvre la fenêtre d'installation de GFS à la ligne de l'extension (le clic sur une fonction grisée).
 - **Les liens entre apps** : `choose({ types, apps?, titre? })` fait désigner un fichier d'une autre app dans l'explorateur de GFS (`types` : ceux que les apps offrent à choisir ; `titre` : le texte que GFS montre, déjà traduit) et rend `{ app, id, nom, type }`, ou `null` si la personne annule. L'app garde la clé `{ app, id, type }` (le nom n'est qu'une étiquette) et la rend à `openFile(clé)`, qui rend `true` quand l'app visée a ouvert le fichier ; dans une autre app que la sienne, celle-ci prend sa place (une seule à la fois) et la promesse ne se règle pas. Un fichier disparu rejette avec `GFS_INTROUVABLE`, une app que la personne ne débloque pas avec `GFS_ANNULE`, une demande mal formée ou un second choix en même temps avec `GFS_REFUSE` : l'app ne supprime jamais un lien d'elle-même. Seule, les deux rejettent (`GFS absent`) : l'app grise « Lier un fichier ».
 - `opensInNewTab(href)` : un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le ferait mourir ; hébergée, l'app l'ouvre dans un nouvel onglet.

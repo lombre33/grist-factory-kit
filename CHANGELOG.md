@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.4.0 : l'identité de la personne (03/11/2026)
+
+Une app qui l'a déclarée peut connaître l'adresse e-mail de la personne connectée, par GFS (contrats de GFS, 3.4 point 6 et 5.2 point 9) : un manifeste de plus, plus de table d'essai à elle quand GFS l'héberge. Rien ne change pour une app qui n'appelle pas ces deux fonctions.
+
+- **Lire l'adresse** : `GfsLink.identity()` rend `{ email }` (l'adresse telle que Grist la donne, casse gardée) ou `null`. `null` : l'app ne l'a pas déclarée, GFS ne la connaît pas (document en lecture seule, personne non connectée, table du rangement pas encore créée) ou l'app est seule ; l'app ne peut pas les distinguer, et fait alors comme seule.
+- **Être prévenue** : `GfsLink.onIdentity(fn)` rappelle l'abonné quand GFS apprend l'adresse après avoir donné le contexte (la table du rangement naît pendant la session), avec sa propre copie, une fois par vrai changement.
+- **Hors de GFS** : rien n'est écouté ni envoyé ; `identity()` rend `null`. La table d'essai de l'app seule reste à l'app.
+- **Essais** : 62 sous Node, dont 2 pour l'identité ; la forme exacte du contexte et de l'événement `identite` se mesure dans un vrai Grist (`prototype/labo/run-personne.mjs` de GFS).
+
 ## 0.3.0 : les liens entre apps (03/11/2026)
 
 Une app peut lier un fichier d'une autre app et le rouvrir plus tard, par GFS (contrats de GFS, 5.4, points 2 et 7). Rien ne change pour une app qui n'appelle pas ces deux fonctions.

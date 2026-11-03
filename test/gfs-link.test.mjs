@@ -36,6 +36,7 @@ const CONTEXT = {
   lectureSeule: false, acces: 'full', inconnu: 'pas gardé',
   langue: 'en', barre: { bord: 'gauche', epaisseur: 42, zone: { x: 0, y: 134, largeur: 42, hauteur: 132 } },
   stockage: { pp_theme: 'dark', 'clé avec espace': 'x', nombre: 3 },
+  identite: { email: ' Ana@Exemple.org ', nom: 'pas gardé' },
   extensions: ['edition', 'Pas-Un-Id'], bibliotheques: { tiptap: { src: 'https://cdn.example/t.js', integrite: 'sha384-abc' }, mauvaise: { src: 1 } },
   ouverture: { fichier: { id: 16, type: 'document' }, type: 'document', dossier: 'Stock', raison: 'explorateur' },
 };
@@ -100,6 +101,7 @@ test('hébergée : le contexte est demandé une fois, au cadre parent ; seuls se
   assert.equal(kept.acces, 'full');
   assert.equal(link.language(), 'en');
   assert.deepEqual(link.bar(), CONTEXT.barre);
+  assert.deepEqual(link.identity(), { email: 'Ana@Exemple.org' }, 'l\'adresse telle que Grist la donne (casse gardée, blancs de bord retirés), rien d\'autre');
   assert.deepEqual(link.extensions(), ['edition']);
   assert.deepEqual(link.library('tiptap'), { src: 'https://cdn.example/t.js', integrite: 'sha384-abc', forme: 'script' });
   assert.equal(link.library('mauvaise'), null);
@@ -114,6 +116,8 @@ test('ce que le lien rend est une copie : la changer ne change pas le lien', asy
   link.bar().zone.x = 999;
   link.context().document = 'autre';
   link.extensions().push('intrus');
+  link.identity().email = 'autre@exemple.org';
+  assert.equal(link.identity().email, 'Ana@Exemple.org');
   assert.equal(link.bar().zone.x, 0);
   assert.equal(link.context().document, 'doc1');
   assert.deepEqual(link.extensions(), ['edition']);
@@ -331,4 +335,36 @@ test('un lien mailto: ou tel: s\'ouvre dans un nouvel onglet chez GFS, pas une a
   assert.equal(link.opensInNewTab('tel:+33100000000'), true);
   assert.equal(link.opensInNewTab('https://example.com'), false);
   assert.equal(link.opensInNewTab(null), false);
+});
+
+test('identité : le contexte la donne, l\'événement la change une fois par vrai changement ; une forme qui n\'est pas une adresse vaut null', async () => {
+  const without = await hosted({ ...CONTEXT, identite: null });
+  assert.equal(without.link.identity(), null, 'GFS ne l\'a pas donnée (app qui ne l\'a pas déclarée, ou GFS ne la connaît pas)');
+  const { fake, link } = await hosted({ ...CONTEXT, identite: undefined });
+  const seen = [];
+  const stop = link.onIdentity(value => seen.push(value));
+  const event = data => fake.deliver({ gfs: 0, type: 'evenement', nom: 'identite', data });
+  event({ identite: { email: 'ana@exemple.org' } });
+  event({ identite: { email: 'ana@exemple.org' } });
+  event({ identite: { email: 'pas une adresse' } });
+  event({ identite: 'ana@exemple.org' });
+  event({ identite: { email: 'ben@exemple.org' } });
+  event({ identite: null });
+  stop();
+  event({ identite: { email: 'cleo@exemple.org' } });
+  assert.deepEqual(seen, [{ email: 'ana@exemple.org' }, null, { email: 'ben@exemple.org' }, null], 'un abonné par vrai changement, la copie de chaque valeur');
+  assert.deepEqual(link.identity(), { email: 'cleo@exemple.org' }, 'le lien garde la dernière, même désabonné');
+});
+
+test('identité : le contexte d\'un GFS d\'avant (sans `identite`) et l\'app seule la laissent à null', async () => {
+  const { identite, ...old } = CONTEXT;
+  assert.equal(identite.email.trim(), 'Ana@Exemple.org');
+  const { link } = await hosted(old);
+  assert.equal(link.identity(), null);
+  const alone = createGfsLink({ host: { location: { search: '' } } });
+  await alone.ready;
+  assert.equal(alone.identity(), null);
+  const calls = [];
+  alone.onIdentity(value => calls.push(value))();
+  assert.deepEqual(calls, [], 'seule : rien n\'est écouté, aucun appel');
 });
