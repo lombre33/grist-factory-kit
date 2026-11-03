@@ -311,13 +311,131 @@ test('openFile : la clé part en { app, fichier: { id, type } } ; la réponse di
   assert.equal(fake.sent.length, before);
 });
 
-test('seule : choose et openFile refusent sans rien envoyer', async () => {
+test('seule : choose, openFile et deposit refusent sans rien envoyer', async () => {
   const fake = gfs({ search: '?language=fr' });
   const link = createGfsLink({ host: fake.host });
   await link.ready;
   await assert.rejects(link.choose({ types: ['document'] }), /GFS absent/);
   await assert.rejects(link.openFile({ app: 'a', id: '1', type: 't' }), /GFS absent/);
+  await assert.rejects(link.deposit({ fichier: new File(['%PDF'], 'a.pdf'), nom: 'a.pdf' }), /GFS absent/);
   assert.equal(fake.sent.length, 0);
+});
+
+// Le rangement d'un export (5.4, point 9). Le GFS d'essai note ce qui part en le copiant (`structuredClone`) : un `File` y devient un `Blob` sans nom, ses octets restent.
+const PDF = () => new File(['%PDF-1.4 export'], 'Facture.pdf', { type: 'application/pdf' });
+
+test('deposit : la demande part telle qu\'elle est écrite — les octets du fichier, le nom, le lot, ce qui reste à ranger, le dossier —, la réponse est { statut, id (texte), nom }', async () => {
+  const { fake, link } = await hosted();
+  const deposited = link.deposit({ fichier: PDF(), nom: 'Facture', type: 'pdf', lot: 'export-3', suivants: 11, dossier: 'Factures/2026', inconnu: 'pas envoyé' });
+  assert.equal(fake.calls('ranger').length, 1);
+  const { fichier, ...rest } = fake.calls('ranger')[0].args;
+  assert.deepEqual(rest, { nom: 'Facture', type: 'pdf', lot: 'export-3', suivants: 11, dossier: 'Factures/2026' });
+  assert.equal(await fichier.text(), '%PDF-1.4 export');
+  fake.replyTo('ranger', { statut: 'copie', id: 7, nom: 'Facture (1).pdf', inconnu: 'pas gardé' });
+  assert.deepEqual(await deposited, { statut: 'copie', id: '7', nom: 'Facture (1).pdf' });
+});
+
+test('deposit : ce qui n\'est pas donné ne part pas (mais « suivants: 0 », le dernier du lot, part)', async () => {
+  const { fake, link } = await hosted();
+  link.deposit({ fichier: PDF(), nom: 'A.pdf' });
+  link.deposit({ fichier: PDF(), nom: 'B.pdf', lot: undefined, type: undefined, suivants: 0, dossier: undefined });
+  const [first, second] = fake.calls('ranger');
+  assert.deepEqual(Object.keys(first.args).sort(), ['fichier', 'nom']);
+  assert.deepEqual(Object.keys(second.args).sort(), ['fichier', 'nom', 'suivants']);
+  assert.equal(second.args.suivants, 0);
+});
+
+test('deposit : les quatre statuts de GFS sont rendus ; « ignore » n\'a ni id ni nom ; un statut d\'un GFS plus récent n\'est pas pris pour un autre ; une réponse vide ne dit rien', async () => {
+  const { fake, link } = await hosted();
+  const replies = [
+    [{ statut: 'ajoute', id: 'a1', nom: 'A.pdf' }, { statut: 'ajoute', id: 'a1', nom: 'A.pdf' }],
+    [{ statut: 'remplace', id: 'a1', nom: 'A.pdf' }, { statut: 'remplace', id: 'a1', nom: 'A.pdf' }],
+    [{ statut: 'copie', id: 'a2', nom: 'A (1).pdf' }, { statut: 'copie', id: 'a2', nom: 'A (1).pdf' }],
+    [{ statut: 'ignore', id: null, nom: null }, { statut: 'ignore', id: null, nom: null }],
+    [{ statut: 'plus-tard', id: 3, nom: 'B.pdf' }, { statut: 'plus-tard', id: '3', nom: 'B.pdf' }],
+    [null, { statut: '', id: null, nom: null }],
+    [{ statut: 'ajoute', id: ' ', nom: '' }, { statut: 'ajoute', id: null, nom: null }],
+  ];
+  for (const [reply, expected] of replies) {
+    const request = link.deposit({ fichier: PDF(), nom: 'A.pdf' });
+    fake.replyTo('ranger', reply);
+    assert.deepEqual(await request, expected);
+  }
+});
+
+test('deposit : un refus de GFS garde son code et sa phrase — dont GFS_INCONNU, d\'un GFS qui ne sait pas encore ranger — et le dépôt suivant part quand même', async () => {
+  const { fake, link } = await hosted();
+  for (const code of ['GFS_REFUSE', 'GFS_ACCES', 'GFS_LECTURE_SEULE', 'GFS_ANNULE', 'GFS_ECHEC', 'GFS_INACTIF', 'GFS_INCONNU']) {
+    const request = link.deposit({ fichier: PDF(), nom: 'A.pdf' });
+    fake.deliver({ gfs: 0, type: 'erreur', id: fake.calls('ranger').at(-1).id, code, message: `dit ${code}` });
+    await assert.rejects(request, error => error.code === code && error.message === `dit ${code}`);
+  }
+  assert.equal(fake.calls('ranger').length, 7);
+});
+
+test('deposit : deux demandes sont deux fichiers (deux appels, chacun sa réponse, pas le partage de choose) et la personne a tout son temps : aucun délai', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 20 });
+  fake.replyTo('contexte', structuredClone(CONTEXT));
+  await link.ready;
+  const first = link.deposit({ fichier: PDF(), nom: 'A.pdf' });
+  const second = link.deposit({ fichier: PDF(), nom: 'A.pdf' });
+  const [one, two] = fake.calls('ranger');
+  assert.equal(fake.calls('ranger').length, 2);
+  assert.notEqual(one.id, two.id);
+  await new Promise(resolve => setTimeout(resolve, 90));
+  fake.deliver({ gfs: 0, type: 'reponse', id: two.id, data: { statut: 'copie', id: 's2', nom: 'A (1).pdf' } });
+  fake.deliver({ gfs: 0, type: 'reponse', id: one.id, data: { statut: 'ajoute', id: 's1', nom: 'A.pdf' } });
+  assert.deepEqual([(await first).id, (await second).id], ['s1', 's2']);
+});
+
+test('deposit : une demande hors règle ne part pas (GFS_REFUSE) — pas de fichier, un texte ou des octets sans File, pas de nom', async () => {
+  const { fake, link } = await hosted();
+  const before = fake.sent.length;
+  const bad = [undefined, null, 'A.pdf', {}, { nom: 'A.pdf' }, { fichier: '%PDF-1.4', nom: 'A.pdf' }, { fichier: new Uint8Array([37, 80]), nom: 'A.pdf' }, { fichier: { size: 3 }, nom: 'A.pdf' },
+    { fichier: PDF() }, { fichier: PDF(), nom: '  ' }, { fichier: PDF(), nom: 4 }];
+  for (const request of bad) await assert.rejects(link.deposit(request), error => error.code === 'GFS_REFUSE');
+  assert.equal(fake.sent.length, before);
+});
+
+test('l\'ouverture garde le fichier que GFS passe — `lecture` { id (texte), fichier } du contexte, `importation` { valeur, fichier } de l\'appel `ouvrir` — tel quel, sans clé de plus quand il n\'y en a pas', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 1000 });
+  const pdf = PDF();
+  fake.replyTo('contexte', { ...CONTEXT, ouverture: { fichier: null, type: 'pdf', dossier: 'Factures', raison: 'lire', lecture: { id: 12, fichier: pdf }, inconnu: 'pas gardé' } });
+  await link.ready;
+  const opening = link.opening();
+  assert.deepEqual(Object.keys(opening).sort(), ['dossier', 'fichier', 'lecture', 'raison', 'type']);
+  assert.deepEqual([opening.fichier, opening.type, opening.dossier, opening.raison, opening.lecture.id], [null, 'pdf', 'Factures', 'lire', '12']);
+  assert.equal(opening.lecture.fichier, pdf, 'le même File, pas une copie');
+  opening.dossier = 'changé';
+  opening.lecture.id = 'changé';
+  assert.deepEqual([link.opening().dossier, link.opening().lecture.id], ['Factures', '12'], 'chaque lecture a sa copie');
+
+  const seen = [];
+  link.onOpen((request) => { seen.push(request); return true; });
+  const docx = new File(['x'], 'modele.docx');
+  fake.deliver({ gfs: 0, type: 'appel', id: 5, nom: 'ouvrir', args: { fichier: null, type: 'document', dossier: '', raison: 'importer', importation: { valeur: 'docx', fichier: docx } } });
+  assert.equal(seen[0].importation.fichier, docx);
+  assert.equal(seen[0].importation.valeur, 'docx');
+  assert.deepEqual(Object.keys(seen[0]).sort(), ['dossier', 'fichier', 'importation', 'raison', 'type']);
+  fake.deliver({ gfs: 0, type: 'appel', id: 6, nom: 'ouvrir', args: { fichier: { id: 16, type: 'document' }, type: 'document', dossier: '', raison: 'explorateur' } });
+  assert.deepEqual(Object.keys(seen[1]).sort(), ['dossier', 'fichier', 'raison', 'type'], 'sans fichier passé, ni `importation` ni `lecture`');
+});
+
+test('l\'ouverture ne garde ni `importation` ni `lecture` qui ne portent pas un File ou un Blob, ni une `lecture` sans identifiant', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 1000 });
+  fake.replyTo('contexte', { ...CONTEXT, ouverture: { fichier: null, type: 'pdf', dossier: '', raison: 'lire', lecture: { id: 3, fichier: { name: 'x.pdf', size: 3 } }, importation: 'docx' } });
+  await link.ready;
+  assert.deepEqual(Object.keys(link.opening()).sort(), ['dossier', 'fichier', 'raison', 'type']);
+  const seen = [];
+  link.onOpen((request) => { seen.push(request); return false; });
+  fake.deliver({ gfs: 0, type: 'appel', id: 8, nom: 'ouvrir', args: { fichier: null, type: 'pdf', dossier: '', raison: 'lire', lecture: { id: ' ', fichier: PDF() }, importation: { valeur: 'docx', fichier: 'texte' } } });
+  assert.deepEqual(Object.keys(seen[0]).sort(), ['dossier', 'fichier', 'raison', 'type']);
+  fake.deliver({ gfs: 0, type: 'appel', id: 9, nom: 'ouvrir', args: { fichier: null, type: 'document', dossier: '', raison: 'importer', importation: { fichier: PDF() } } });
+  assert.equal(seen[1].importation.valeur, '', 'une valeur absente vaut un texte vide');
+  assert.ok(seen[1].importation.fichier instanceof Blob);
 });
 
 test('barre.masquer part sans `id` ; une valeur qui n\'est ni vraie ni fausse ne part pas', async () => {

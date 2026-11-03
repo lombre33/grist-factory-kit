@@ -83,8 +83,60 @@ export async function gfsLink(env) {
   const refused = await app.evaluate(() => window.cadre.link);
   check('« ouvrir » part avec { app, fichier: { id (texte), type } } ; un fichier disparu rejette avec son code, jamais avec le lien lui-même',
     opens.length === 1 && JSON.stringify(opens[0].args) === JSON.stringify({ app: 'publipostage', fichier: { id: '12', type: 'document' } }) && refused === 'GFS_INTROUVABLE', { opens, refused });
+  await files(page, app);
   await ambiance(page, app);
   await context.close();
+}
+
+// Les fichiers qui passent entre l'app et GFS (5.2 point 3 et 5.4 points 1, 8 et 9), dans un cadre isolé qui n'a ni stockage ni origine : le `File` que GFS passe à l'ouverture (`importation`, `lecture`) arrive
+// vrai `File`, avec son nom et ses octets, et celui que l'app fabrique pour `GfsLink.deposit` part avec les siens ; la réponse de GFS est lue, un refus garde son code.
+async function files(page, app) {
+  const calls = name => fromApp(page, data => data && data.type === 'appel' && data.nom === name);
+  const later = (name, count) => until(() => calls(name).then(found => (found.length >= count ? found : null)));
+  const answer = (id, message) => page.evaluate(([askId, body]) => window.hote.send({ gfs: 0, id: askId, ...body }), [id, message]);
+  const lastOpening = () => app.evaluate(async () => {
+    const request = window.cadre.seen.ouvrir.at(-1);
+    const describe = async entry => (entry ? { cles: Object.keys(entry).sort(), vrai: entry.fichier instanceof File, nom: entry.fichier.name, taille: entry.fichier.size, type: entry.fichier.type, debut: (await entry.fichier.text()).slice(0, 12), id: entry.id, valeur: entry.valeur } : null);
+    return { cles: Object.keys(request).sort(), raison: request.raison, lecture: await describe(request.lecture), importation: await describe(request.importation) };
+  });
+
+  await page.evaluate(() => {
+    const pdf = new File(['%PDF-1.4 kit'], 'Facture.pdf', { type: 'application/pdf' });
+    window.hote.send({ gfs: 0, type: 'appel', id: 52, nom: 'ouvrir', args: { fichier: null, type: 'pdf', dossier: 'Factures', raison: 'lire', lecture: { id: 12, fichier: pdf } } });
+  });
+  let opening = await until(async () => { const value = await lastOpening().catch(() => null); return value && value.raison === 'lire' ? value : null; });
+  check('« ouvrir » avec `lecture` : l\'app reçoit un vrai File (nom, taille, type, octets) et l\'identifiant du fichier en texte, sans `importation`',
+    Boolean(opening) && opening.cles.join() === 'dossier,fichier,lecture,raison,type' && opening.importation === null
+    && JSON.stringify(opening.lecture) === JSON.stringify({ cles: ['fichier', 'id'], vrai: true, nom: 'Facture.pdf', taille: 12, type: 'application/pdf', debut: '%PDF-1.4 kit', id: '12' }), opening);
+
+  await page.evaluate(() => {
+    const docx = new File(['PK\u0003\u0004 kit'], 'modele.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    window.hote.send({ gfs: 0, type: 'appel', id: 53, nom: 'ouvrir', args: { fichier: null, type: 'document', dossier: '', raison: 'importer', importation: { valeur: 'docx', fichier: docx } } });
+  });
+  opening = await until(async () => { const value = await lastOpening().catch(() => null); return value && value.raison === 'importer' ? value : null; });
+  check('« ouvrir » avec `importation` : l\'app reçoit la valeur du format et un vrai File, sans `lecture`',
+    Boolean(opening) && opening.cles.join() === 'dossier,fichier,importation,raison,type' && opening.lecture === null && opening.importation.vrai === true
+    && opening.importation.valeur === 'docx' && opening.importation.nom === 'modele.docx' && opening.importation.taille === 8, opening);
+
+  await app.evaluate(() => {
+    const file = new File(['%PDF-1.4 export'], 'Facture.pdf', { type: 'application/pdf' });
+    window.cadre.link = window.cadre.GfsLink.deposit({ fichier: file, nom: 'Facture', lot: 'export-3', suivants: 2, dossier: 'Factures' });
+  });
+  const deposits = await later('ranger', 1);
+  await answer(deposits[0].id, { type: 'reponse', data: { statut: 'copie', id: 'f7', nom: 'Facture (1).pdf', inconnu: 'pas gardé' } });
+  const stored = await app.evaluate(() => window.cadre.link);
+  check('« ranger » part avec le File fabriqué dans le cadre isolé (nom, type, octets), le nom, le lot, ce qui reste et le dossier ; la réponse de GFS est lue : { statut, id, nom }',
+    deposits.length === 1 && JSON.stringify(deposits[0].args) === JSON.stringify({ fichier: { blob: true, fichier: true, nom: 'Facture.pdf', taille: 15, type: 'application/pdf', debut: '%PDF-1.4 exp' }, nom: 'Facture', lot: 'export-3', suivants: 2, dossier: 'Factures' })
+    && JSON.stringify(stored) === JSON.stringify({ statut: 'copie', id: 'f7', nom: 'Facture (1).pdf' }), { deposits, stored });
+
+  await app.evaluate(() => {
+    window.cadre.link = window.cadre.GfsLink.deposit({ fichier: new File(['%PDF-1.4'], 'B.pdf'), nom: 'B.pdf' }).then(() => 'rangé', error => `${error.code} : ${error.message}`);
+  });
+  const second = await later('ranger', 2);
+  await answer(second[1].id, { type: 'erreur', code: 'GFS_ANNULE', message: 'Tu as refusé de créer la table des fichiers.' });
+  const refused = await app.evaluate(() => window.cadre.link);
+  check('un refus de GFS garde son code et sa phrase ; sans lot ni dossier, rien de plus ne part', refused === 'GFS_ANNULE : Tu as refusé de créer la table des fichiers.'
+    && JSON.stringify(Object.keys(second[1].args).sort()) === JSON.stringify(['fichier', 'nom']), { refused, second });
 }
 
 // L'ambiance de GFS (5.2, point 10) : GFS la donne par l'événement `ambiance` (ici un vrai message, test/ambiance-exemple.json) ; l'app la pose par le CSSOM, la politique `style-src 'self'` de sa page ne laissant

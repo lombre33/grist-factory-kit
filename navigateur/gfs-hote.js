@@ -18,10 +18,22 @@ function isolated(id, src) {
   return frame;
 }
 
+// Un appel qui porte un fichier (`ranger`, 5.4 point 9) est noté avec sa description — nom, taille, type, début des octets, et si c'est un vrai `File` — lue avant de le noter : le fichier
+// lui-même ne traverse pas la lecture que l'essai fait de la page.
+const carriesBlob = message => Boolean(message && message.args && typeof message.args === 'object' && Object.values(message.args).some(value => value instanceof Blob));
+async function describe(message) {
+  const args = { ...message.args };
+  for (const [key, value] of Object.entries(args)) {
+    if (value instanceof Blob) args[key] = { blob: true, fichier: value instanceof File, nom: value.name === undefined ? null : value.name, taille: value.size, type: value.type, debut: (await value.text()).slice(0, 12) };
+  }
+  return { ...message, args };
+}
+
 window.addEventListener('message', (event) => {
   const fromApp = Boolean(app) && event.source === app.contentWindow;
-  received.push({ from: fromApp ? 'app' : 'autre', data: event.data });
   const message = event.data;
+  const note = data => received.push({ from: fromApp ? 'app' : 'autre', data });
+  if (carriesBlob(message)) describe(message).then(note); else note(message);
   if (fromApp && message && message.type === 'appel' && message.nom === 'contexte') app.contentWindow.postMessage({ gfs: 0, type: 'reponse', id: message.id, data: CONTEXT }, '*');
 });
 

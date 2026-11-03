@@ -1,8 +1,8 @@
 # Grist Factory Kit
 
-Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, le lien avec GFS, le widget qui héberge les apps, et l'ambiance qu'il leur donne. Des modules ES pour le navigateur et trois feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
+Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, le lien avec GFS, le widget qui héberge les apps (les liens entre apps, les fichiers qu'il leur passe, les exports qu'il range), et l'ambiance qu'il leur donne. Des modules ES pour le navigateur et trois feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
 
-Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.6.0** ([CHANGELOG](CHANGELOG.md)).
+Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.7.0** ([CHANGELOG](CHANGELOG.md)).
 
 Le kit est la couche du bas : il n'importe rien (ni app, ni GFS, ni bibliothèque). Une app importe le kit, jamais une autre app ; une extension importe son app et le kit, jamais une autre extension.
 
@@ -12,8 +12,8 @@ Référencer le kit à une étiquette (un commit à part dans l'app, relu) :
 
 ```sh
 git submodule add https://github.com/lombre33/grist-factory-kit.git kit
-git -C kit checkout v0.6.0
-git add kit && git commit -m "Kit v0.6.0"
+git -C kit checkout v0.7.0
+git add kit && git commit -m "Kit v0.7.0"
 ```
 
 Dans la page, les deux feuilles avant celle de l'app :
@@ -49,7 +49,7 @@ Quand Grist Factory Suite (GFS) héberge l'app, il lui donne `gfs=<n>` dans l'ad
 import { GfsLink } from './kit/js/gfs-link.js';
 
 await GfsLink.ready;                                   // le contexte est arrivé, ou ses 5 secondes sont passées ; tout de suite seule
-const wanted = GfsLink.opening();                      // ce que GFS demande d'ouvrir au démarrage, ou null
+const wanted = GfsLink.opening();                      // ce que GFS demande d'ouvrir au démarrage, ou null ; avec `importation` ou `lecture` quand GFS passe un fichier
 GfsLink.onOpen(async ({ fichier, type }) => openFile(fichier, type));   // le double-clic sur un autre fichier, l'app déjà ouverte : rendre vrai une fois ouvert
 GfsLink.onLanguage(language => I18n.setLanguage(language));
 GfsLink.onBar(bar => keepClear(bar));                  // ce que la barre de GFS recouvre : { bord, epaisseur, zone } ou null
@@ -57,6 +57,7 @@ GfsLink.onIdentity(person => showMine(person));        // l'adresse e-mail de la
 GfsLink.storageSet('monapp_zoom', '1.2');              // les choix de la personne : chez GFS, ou dans le navigateur seule
 const lien = await GfsLink.choose({ types: ['document', 'grille'], titre: I18n.t('monapp.pick') });   // un fichier d'une autre app : { app, id, nom, type }, ou null si la personne annule
 await GfsLink.openFile({ app: lien.app, id: lien.id, type: lien.type });                             // GFS l'ouvre dans son app, plus tard, par la clé gardée
+const stored = await GfsLink.deposit({ fichier: pdf, nom: 'Facture.pdf', lot: 'export-3', suivants: 11, dossier: 'Factures' });   // GFS garde l'export : { statut, id, nom }
 ```
 
 - **Le contexte** (`GfsLink.context()`) garde ses champs connus (document, page, accès, lecture seule…) et rien d'autre ; chaque `on…` rappelle son abonné quand la valeur change vraiment, avec sa propre copie, et rend de quoi se désabonner.
@@ -66,6 +67,8 @@ await GfsLink.openFile({ app: lien.app, id: lien.id, type: lien.type });        
 - **L'identité** : `identity()` rend `{ email }`, l'adresse e-mail de la personne connectée, ou `null`. GFS ne la donne qu'à l'app qui l'a déclarée dans son manifeste (`permissions.identite`, avec sa raison en français et en anglais) et seulement quand il la connaît ; `null` veut donc dire « pas déclarée », « GFS ne la connaît pas » ou « app seule », sans que l'app puisse le distinguer : elle fait alors comme seule (sa propre table d'essai, avec l'accord de la personne, ou un choix de la personne gardé par `storageSet`). `onIdentity(fn)` rappelle l'abonné quand GFS l'apprend après le contexte. L'adresse montre et retrouve ses données, elle ne décide d'aucun droit : c'est Grist qui accepte ou refuse.
 - **Les extensions** : `extensions()`, `library(id)` (la source de chaque bibliothèque, avec son empreinte), `onExtensions(fn)`, et `install(id)`, qui ouvre la fenêtre d'installation de GFS à la ligne de l'extension (le clic sur une fonction grisée).
 - **Les liens entre apps** : `choose({ types, apps?, titre? })` fait désigner un fichier d'une autre app dans l'explorateur de GFS (`types` : ceux que les apps offrent à choisir ; `titre` : le texte que GFS montre, déjà traduit) et rend `{ app, id, nom, type }`, ou `null` si la personne annule. L'app garde la clé `{ app, id, type }` (le nom n'est qu'une étiquette) et la rend à `openFile(clé)`, qui rend `true` quand l'app visée a ouvert le fichier ; dans une autre app que la sienne, celle-ci prend sa place (une seule à la fois) et la promesse ne se règle pas. Un fichier disparu rejette avec `GFS_INTROUVABLE`, une app que la personne ne débloque pas avec `GFS_ANNULE`, une demande mal formée ou un second choix en même temps avec `GFS_REFUSE` : l'app ne supprime jamais un lien d'elle-même. Seule, les deux rejettent (`GFS absent`) : l'app grise « Lier un fichier ».
+- **Les fichiers que GFS passe** : à l'ouverture (`opening()`, ou l'argument de `onOpen`), `importation: { valeur, fichier }` quand la personne a choisi un fichier à importer dans le menu « Nouveau » de GFS (`valeur` : celle du format de `actions.importer`), `lecture: { id, fichier }` quand elle ouvre en lecture un fichier que GFS garde (`id` : l'identifiant du fichier chez GFS, texte, la clé où l'app accroche ce qu'elle garde, des commentaires par exemple). `fichier` est le `File` tel que le cadre l'a reçu (ses octets, son nom, son type) : l'app le lit comme tout fichier choisi et ne le renvoie jamais à GFS. Ces deux clés n'existent que si GFS les a passées avec un vrai `File` ; sans elles, l'ouverture garde ses quatre champs (`fichier`, `type`, `dossier`, `raison`).
+- **Ranger un export** : `deposit({ fichier, nom, type?, lot?, suivants?, dossier? })` demande à GFS de garder un fichier que l'app vient de fabriquer, un export en PDF (`fichier` : un `File` ou un `Blob`, `type` : `pdf`, le seul que GFS garde, `nom` : le nom pour GFS, un `.pdf` manquant est ajouté ; `dossier` : le dossier de la personne où va un fichier nouveau). L'app donne les octets, jamais un jeton : GFS seul écrit ce qu'il garde, et pose lui-même à la personne la question « Ce nom est déjà pris » (remplacer, garder les deux, ne rien ranger). Pour un export en lot, tous les fichiers portent le même `lot` (un texte de 64 signes au plus) et chacun le nombre de `suivants` à ranger encore (0 pour le dernier) : la personne peut alors répondre une fois pour tous. Rend `{ statut, id, nom }` : `statut` vaut `ajoute`, `remplace`, `copie` (le nom était pris, `nom` est celui que GFS a donné) ou `ignore` (la personne n'en veut pas : `id` et `nom` sont `null`). GFS ne dit rien par-dessus l'app : un refus rejette avec son `code` (`GFS_REFUSE` : demande hors règle ou type que le manifeste de l'app ne déclare pas dans `actions.ranger` ; `GFS_ACCES`, `GFS_LECTURE_SEULE`, `GFS_ANNULE` : la personne refuse de créer la table des fichiers ; `GFS_ECHEC` : Grist ou le transfert ; `GFS_INACTIF` : l'app n'est plus l'app active ; `GFS_INCONNU` : un GFS qui ne sait pas encore ranger) et sa phrase, que l'app écrit dans son coin d'état. Chaque appel est un fichier de plus (pas de partage entre deux demandes), GFS les prend l'un après l'autre et la personne a tout son temps : aucun délai. Seule, `deposit` rejette (`GFS absent`) : l'app grise « Ranger dans GFS ».
 - `opensInNewTab(href)` : un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le ferait mourir ; hébergée, l'app l'ouvre dans un nouvel onglet.
 - L'écoute passe par `addEventListener('message')` et ne lit que le cadre parent, jamais `window.onmessage =` (qui remplacerait celle du script d'API de Grist). `createGfsLink({ host, timeoutMs })` fait un lien de plus pour un essai.
 

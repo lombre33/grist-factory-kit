@@ -5,7 +5,7 @@
 //   await GfsLink.ready;                         // le contexte est arrivé, ou ses 5 secondes sont passées : jamais rejetée, tout de suite quand l'app est seule
 //   GfsLink.hosted                               // GFS héberge l'app : `gfs=<n>` dans l'adresse de son cadre (js/host.js), sans rien demander
 //   GfsLink.context()                            // ce que le contexte dit une fois pour toutes (instance, document, page, adresseWidget, acces, lectureSeule…, contrats 5.2), ou null
-//   GfsLink.opening()                            // ce que GFS demande d'ouvrir au démarrage, ou null ; GfsLink.onOpen(fn) répond à l'appel `ouvrir` quand l'app est déjà ouverte
+//   GfsLink.opening()                            // ce que GFS demande d'ouvrir au démarrage, ou null ; GfsLink.onOpen(fn) répond à l'appel `ouvrir` quand l'app est déjà ouverte (le fichier passé par `importation` ou `lecture`, ci-dessous)
 //   GfsLink.language(), GfsLink.onLanguage(fn)   // 'fr' ou 'en' : la langue de GFS qui vaut (un seul choix pour GFS et ses apps, 5.2 point 6)
 //   GfsLink.bar(), GfsLink.onBar(fn)             // { bord, epaisseur, zone } : ce que la barre de GFS recouvre et que l'app laisse libre, ou null (5.2 point 7)
 //   GfsLink.hideBar(true | false)                // l'app demande à ne pas avoir la barre (un diaporama plein cadre), puis la rend
@@ -15,8 +15,14 @@
 //   GfsLink.extensions(), GfsLink.library(id), GfsLink.onExtensions(fn), GfsLink.install(id)   // les extensions actives, la source de leurs bibliothèques (5.2 point 4, 5.4)
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
 //   GfsLink.openFile({ app, id, type })          // GFS ouvre ce fichier dans son app : { ouvert } ; dans une autre app que celle-ci, elle prend la place de celle-ci (5.4, point 7)
+//   GfsLink.deposit({ fichier, nom, type?, lot?, suivants?, dossier? })   // GFS garde ce fichier que l'app vient de fabriquer (un export en PDF) : { statut, id, nom } (5.4, point 9)
 // `choose` et `openFile` sont les liens entre apps : l'app garde la clé { app, id, type } que `choose` rend (le nom n'est qu'une étiquette) et la rend à `openFile` ; un fichier disparu rejette `openFile`
 // avec `GFS_INTROUVABLE`, une personne qui ne débloque pas l'app avec `GFS_ANNULE`, jamais le lien lui-même.
+// `deposit` est le rangement d'un export : l'app donne les octets (un `File` ou un `Blob`) et un nom, jamais un jeton ; GFS seul écrit ce qu'il garde, pose lui-même la question « Ce nom est déjà pris »
+// à la personne (elle a le choix de remplacer, de garder les deux ou de ne rien ranger) et rend ce qu'il a fait : `statut` vaut `ajoute`, `remplace`, `copie` (le nom était pris : `nom` est le nom libre
+// que GFS a donné) ou `ignore` (la personne n'en veut pas : `id` et `nom` sont null). Les fichiers d'un même export en lot portent le même `lot` et, pour chacun, le nombre de `suivants` à ranger encore (0
+// pour le dernier) : la personne peut alors répondre une fois pour tous. GFS ne dit rien par-dessus l'app : un refus rejette avec son `code` (`GFS_REFUSE`, `GFS_ACCES`, `GFS_LECTURE_SEULE`, `GFS_ANNULE`,
+// `GFS_ECHEC`, `GFS_INACTIF`, ou `GFS_INCONNU` d'un GFS qui ne sait pas encore ranger) et sa phrase, que l'app écrit dans son coin d'état. Chaque appel est un fichier de plus : GFS les prend l'un après l'autre.
 // Chaque abonné (`on…`) est rappelé quand la valeur change, l'arrivée du contexte comprise, et chaque `on…` rend de quoi se désabonner. Seule, l'app n'écoute ni n'envoie rien : le
 // contexte, l'ouverture, la langue, la barre, l'identité et l'ambiance sont null, les extensions vides. Un message n'est lu que s'il vient du cadre parent (`event.source`) et porte le contrat de GFS ;
 // l'écoute passe par addEventListener, jamais par `window.onmessage =`, qui remplacerait celle du script d'API de Grist.
@@ -40,12 +46,31 @@ const copy = value => (value == null ? null : structuredClone(value));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const validKey = key => typeof key === 'string' && STORAGE_KEY.test(key);
 
+const isBlob = value => typeof Blob !== 'undefined' && value instanceof Blob;
+
+// `importation: { valeur, fichier }` (raison `importer`) et `lecture: { id, fichier }` (raison `lire`) : le `File` que la personne a choisi ou que GFS a téléchargé, gardé tel qu'il est arrivé (il ne se
+// copie pas). Sans un vrai `File` ou `Blob`, la clé n'est pas gardée : mieux vaut qu'elle manque que de faire croire à l'app qu'elle a un fichier.
+const normalizeImportation = raw => (isObject(raw) && isBlob(raw.fichier) ? { valeur: text(raw.valeur), fichier: raw.fichier } : null);
+const normalizeReading = raw => (isObject(raw) && isBlob(raw.fichier) && raw.id != null && String(raw.id).trim() !== '' ? { id: String(raw.id).trim(), fichier: raw.fichier } : null);
+
 // `ouverture` du contexte (contrats 5.2, point 3) ou `args` de l'appel `ouvrir` (5.4) : { fichier, type, dossier, raison }, où `fichier` est null (« Nouveau ») ou { id, type }, l'`id` pris
-// comme texte. null quand ce n'est pas un objet.
+// comme texte ; plus `importation` ou `lecture` quand GFS passe un fichier à l'app. null quand ce n'est pas un objet.
 function normalizeOpening(raw) {
   if (!isObject(raw)) return null;
   const file = isObject(raw.fichier) && raw.fichier.id != null && String(raw.fichier.id).trim() !== '' ? raw.fichier : null;
-  return { fichier: file ? { id: String(file.id).trim(), type: text(file.type) } : null, type: text(raw.type), dossier: text(raw.dossier), raison: text(raw.raison) };
+  const opening = { fichier: file ? { id: String(file.id).trim(), type: text(file.type) } : null, type: text(raw.type), dossier: text(raw.dossier), raison: text(raw.raison) };
+  const importation = normalizeImportation(raw.importation);
+  const reading = normalizeReading(raw.lecture);
+  if (importation) opening.importation = importation;
+  if (reading) opening.lecture = reading;
+  return opening;
+}
+
+// La copie de l'ouverture que l'app lit : chaque lecture la sienne, sauf le fichier passé, qui est le même `File` (il ne se copie pas, et la copie d'un `File` perd son nom hors des navigateurs).
+function copyOpening(opening) {
+  if (opening === null) return null;
+  const { importation, lecture, ...rest } = opening;
+  return { ...copy(rest), ...(importation ? { importation: { ...importation } } : {}), ...(lecture ? { lecture: { ...lecture } } : {}) };
 }
 
 // `barre` du contexte ou de l'événement (5.2, point 7) : { bord, epaisseur, zone: { x, y, largeur, hauteur } }, en pixels du cadre de l'app, origine en haut à gauche ; null quand rien ne
@@ -302,6 +327,25 @@ function openFile(link, target) {
   return shared(link, `ouvrir:${JSON.stringify(args)}`, () => call(link, 'ouvrir', args).then(data => isObject(data) && data.ouvert === true));
 }
 
+// `ranger` rend { statut, id, nom } (5.4, point 9) : `id` est celui du fichier chez GFS (en texte), `nom` son nom chez GFS ; l'un et l'autre null quand la personne n'en a pas voulu (`ignore`).
+// Un statut d'un GFS plus récent que ce kit est rendu tel quel : l'app l'ignore plutôt que de le prendre pour un autre.
+function normalizeDeposit(raw) {
+  const data = isObject(raw) ? raw : {};
+  return { statut: text(data.statut), id: data.id == null || String(data.id).trim() === '' ? null : String(data.id).trim(), nom: typeof data.nom === 'string' && data.nom !== '' ? data.nom : null };
+}
+
+// Demande à GFS de garder un fichier que l'app vient de fabriquer (5.4, point 9) : `fichier` (un `File` ou un `Blob`) et `nom` sont attendus, `type` (`pdf`, le seul que GFS garde), `lot`, `suivants` et
+// `dossier` suivent tels quels ; GFS en vérifie les limites (`GFS_REFUSE`, avec sa phrase). Pas de partage entre deux demandes, contrairement à `choose` : chaque appel est un fichier de plus, que GFS prend à son tour.
+// Pas de délai non plus : la personne répond à la question d'un nom pris quand elle veut. Rend { statut, id, nom } ; un refus de GFS rejette avec son `code`.
+function deposit(link, request) {
+  if (!link.hosted) return Promise.reject(new Error('GFS absent'));
+  const asked = isObject(request) ? request : {};
+  if (!isBlob(asked.fichier) || typeof asked.nom !== 'string' || asked.nom.trim() === '') return failure('deposit : { fichier (un File ou un Blob), nom } est attendu', 'GFS_REFUSE');
+  const args = { fichier: asked.fichier, nom: asked.nom };
+  for (const key of ['type', 'lot', 'suivants', 'dossier']) if (asked[key] !== undefined) args[key] = asked[key];
+  return call(link, 'ranger', args).then(normalizeDeposit);
+}
+
 function onOpen(link, fn) {
   link.openHandler = fn;
   for (const request of link.earlyOpens.splice(0)) deliverOpen(link, request);
@@ -336,7 +380,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     // GFS a répondu (le contexte ou un événement est arrivé) : faux seule, et tant qu'un GFS qui ne répond pas laisse passer ses 5 secondes.
     isAnswering: () => link.known,
     context: () => copy(link.context),
-    opening: () => copy(link.opening),
+    opening: () => copyOpening(link.opening),
     language: () => link.language,
     bar: () => copy(link.bar),
     identity: () => copy(link.identity),
@@ -349,6 +393,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     install: extension => install(link, extension),
     choose: request => choose(link, request),
     openFile: target => openFile(link, target),
+    deposit: request => deposit(link, request),
     // Un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le fait mourir (contrats 1.3, point 1) : hébergée, l'app l'ouvre dans un nouvel onglet. Seule, faux.
     opensInNewTab: href => link.hosted && /^(?:mailto|tel):/i.test(String(href == null ? '' : href).trim()),
     onOpen: fn => onOpen(link, fn),
