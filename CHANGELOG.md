@@ -2,6 +2,17 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.5.0 : le sélecteur de couleur (03/11/2026)
+
+Le menu de couleur et la fenêtre « Couleur personnalisée » de Publipostage+ (`js/color-palette.js`, `js/color-dialog.js`, `css/color-palette.css` et le calcul de ses essais, repris à `134d043` ; la rangée « Couleurs du thème » à `35fc21a`), pour que Form+, Automation+, Grist-BI, Thusday et GFS (la couleur libre de son thème) aient les mêmes, sans les recopier. Rien ne change pour une app qui ne l'importe pas.
+
+- **Le menu** (`createColorPalette`, `js/color-palette.js`) : la palette de 50 pastilles, les rangées de couleurs que l'app a gardées (nom, infobulle, croix, Suppr), le pied « Personnalisé… » et, au choix, le bouton qui retire la couleur. Du contenu que l'app pose dans son menu : le fond et l'ombre sont à elle. Une rangée `readonly` (le thème de l'app) n'a ni croix ni Suppr, et `names` nomme chaque couleur. Une seule étape de Tab par rangée, les flèches, Début et Fin.
+- **La fenêtre** (`ColorDialog.open`, `js/color-dialog.js`) : le carré, la teinte, l'aperçu face à la couleur de départ, le code et les trois canaux, les cases « garder » (dont la fenêtre se souvient) quand l'app donne des rangées. `ColorEditor` est le même contenu sans fenêtre autour, pour une app qui l'ouvre dans la sienne (GFS).
+- **Le calcul** (`ColorMath`, `js/color-math.js`) : les conversions, la luminance, le contraste et l'encre lisible, ceux de Publipostage+ (qui les retire de chez elle en prenant le kit).
+- **Les textes** : `kit.color.*`, en français et en anglais, ajoutés à ceux du kit ; `t` prend un traducteur à soi.
+- **La feuille** (`css/color-picker.css`) : des jetons seulement, hors le carré, la teinte et leurs curseurs (les couleurs qu'on choisit) ; aucun style en ligne, la couleur d'une pastille passe par le CSSOM. Dans un panneau de 700 × 400, le menu mesure 171 px (les rangées à droite de la palette) et la fenêtre tient sans défiler.
+- **Essais** : 79 sous Node, dont 17 pour le sélecteur (la palette, chaque coche lisible sur sa pastille, les textes en français et en anglais, la feuille) ; dans Chromium, 390 vérifications sur `navigateur/couleur.html` (le menu et la fenêtre, à la vraie souris et au vrai clavier, en clair et en sombre, en français et en anglais, sous la politique de sécurité d'une app hébergée), 600 en tout. `KIT_ONLY=couleur` ne joue que ceux-là.
+
 ## 0.4.0 : l'identité de la personne (03/11/2026)
 
 Une app qui l'a déclarée peut connaître l'adresse e-mail de la personne connectée, par GFS (contrats de GFS, 3.4 point 6 et 5.2 point 9) : un manifeste de plus, plus de table d'essai à elle quand GFS l'héberge. Rien ne change pour une app qui n'appelle pas ces deux fonctions.

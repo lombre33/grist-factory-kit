@@ -7,6 +7,7 @@ import { chromium, serve, ROOT, say, check, tally } from './aide.mjs';
 import { themeSources, themeKept, storageRefused, language, loadedTwice } from './scenarios-theme.mjs';
 import { dialogs, ownWindow, layers } from './scenarios-fenetres.mjs';
 import { gfsLink } from './scenarios-gfs.mjs';
+import { colorPalette, colorDialog } from './scenarios-couleur.mjs';
 
 const shots = process.env.KIT_CAPTURES || join(ROOT, 'navigateur', 'captures');
 await mkdir(shots, { recursive: true });
@@ -14,8 +15,12 @@ const { origin, close } = await serve();
 const browser = await chromium.launch();
 const env = { browser, origin, shots, problems: [], external: [] };
 
+// KIT_ONLY=couleur : ne joue que les essais dont le nom contient ce mot (pour travailler sur un seul).
+const only = process.env.KIT_ONLY || '';
+
 // Un essai qui plante est un échec, pas la fin des autres.
 async function run(name, scenario) {
+  if (only && !name.includes(only)) return;
   say(`\n== ${name}`);
   try { await scenario(); } catch (error) { check(`${name} : l'essai s'est arrêté`, false, String(error && error.stack || error)); }
 }
@@ -27,7 +32,11 @@ await run('langue', () => language(env));
 await run('double chargement', () => loadedTwice(env));
 await run('lien avec GFS, dans un cadre isolé', () => gfsLink(env));
 for (const system of ['light', 'dark']) {
-  for (const locale of ['fr-FR', 'en-US']) await run(`saisies et confirmations (${system}, ${locale})`, () => dialogs(env, system, locale));
+  for (const locale of ['fr-FR', 'en-US']) {
+    await run(`saisies et confirmations (${system}, ${locale})`, () => dialogs(env, system, locale));
+    await run(`menu de couleur (${system}, ${locale})`, () => colorPalette(env, system, locale));
+    await run(`fenêtre de couleur (${system}, ${locale})`, () => colorDialog(env, system, locale));
+  }
   await run(`fenêtre libre (${system})`, () => ownWindow(env, system));
   await run(`couches (${system})`, () => layers(env, system));
 }

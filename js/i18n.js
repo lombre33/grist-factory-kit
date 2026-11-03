@@ -10,17 +10,19 @@
 // Les clés du kit commencent par `kit.` ; celles d'une app prennent le préfixe de l'app.
 import { once } from './once.js';
 import { hostContract } from './host.js';
+import { COLOR_STRINGS } from './color-strings.js';
 
 once('i18n', import.meta.url);
 
 export const LANGUAGES = Object.freeze(['fr', 'en']);
 const supported = value => (LANGUAGES.includes(value) ? value : null);
 
-// Les textes du kit lui-même (boutons par défaut des fenêtres) : lus aussi par les essais, qui vérifient le français et l'anglais côte à côte.
+// Les textes du kit lui-même (boutons par défaut des fenêtres, sélecteur de couleur : js/color-strings.js) : lus aussi par les essais, qui vérifient le français et l'anglais côte à côte.
 export const KIT_STRINGS = Object.freeze({
   'kit.cancel': { fr: 'Annuler', en: 'Cancel' },
   'kit.confirm': { fr: 'Valider', en: 'Confirm' },
   'kit.close': { fr: 'Fermer', en: 'Close' },
+  ...COLOR_STRINGS,
 });
 
 // La langue que GFS donne au cadre de l'app (`language` n'est lue qu'avec `gfs=<n>` : seule, l'app n'est pas obligée de suivre la langue de Grist). null quand GFS n'en donne pas une des deux.

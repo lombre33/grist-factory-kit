@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Kit : sélecteur de couleur</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- La politique de sécurité d'une app hébergée par GFS : rien d'en ligne, rien d'extérieur. Le sélecteur de couleur pose ses couleurs par le CSSOM : si l'une passait par un attribut style, cette page casserait. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="../css/tokens.css">
+<link rel="stylesheet" href="../css/windows.css">
+<link rel="stylesheet" href="../css/color-picker.css">
+<link rel="stylesheet" href="couleur.css">
+<script type="module" src="couleur.js"></script>
+</head>
+<body>
+<main>
+  <h1 data-i18n="couleur.title">Sélecteur de couleur</h1>
+  <p class="muted" data-i18n="couleur.intro">Le menu de couleur d'une app, avec ses rangées gardées, et la fenêtre « Couleur personnalisée ».</p>
+  <div class="row">
+    <button type="button" id="open-palette" data-i18n="couleur.open">Couleur</button>
+    <button type="button" id="open-window" data-i18n="couleur.window">Fenêtre seule</button>
+    <span id="current" class="current" data-i18n-aria="couleur.current"></span>
+  </div>
+  <div id="palette-host" class="panel" hidden></div>
+</main>
+</body>
+</html>

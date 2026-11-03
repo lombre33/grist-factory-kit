@@ -1,0 +1,85 @@
+/* Le sélecteur de couleur : le menu (js/color-palette.js : la palette, les rangées de couleurs gardées, le pied) et le contenu de la fenêtre « Couleur personnalisée » (js/color-dialog.js : le carré, la teinte,
+   l'aperçu, les champs, les cases « garder »). À charger après css/tokens.css ; la fenêtre du kit (css/windows.css) n'est pas nécessaire, GFS pose le contenu dans la sienne. Toutes les couleurs de
+   l'interface passent par les jetons, clairs et sombres ; seules ont une couleur propre les pastilles (celle qu'elles portent, `--swatch`), le dégradé du carré et de la teinte (ce sont les couleurs
+   qu'on choisit) et l'anneau blanc des curseurs, cerné de noir pour se lire sur toutes les couleurs. Repris de Publipostage+ (css/color-palette.css).
+   Hauteur : dans un panneau haut, les rangées de couleurs gardées se posent sous la palette, le pied dessous (menu de ~245 px). Dans un panneau court (700 × 400 : la palette seule en occupe déjà la
+   moitié), elles passent à DROITE de la palette, l'une sous l'autre, cinq pastilles de large, et le pied reste sous la palette : le menu mesure alors ~165 px.
+   Les pastilles gardent 20 px et 4 px d'écart (24 px d'un centre à l'autre, la taille d'une cible tactile). */
+
+/* La palette : dix colonnes, cinq rangées (les gris, puis quatre tons). Le liseré de chaque pastille suit le texte à 18 % pour qu'un blanc se voie sur le fond clair et un noir sur le fond sombre. */
+.cp-grid { display: grid; grid-template-columns: repeat(10, 20px); gap: 4px; }
+.cp-swatch { position: relative; box-sizing: border-box; width: 20px; height: 20px; padding: 0; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 5px; background: var(--swatch); cursor: pointer; }
+.cp-swatch:hover { transform: scale(1.14); z-index: 1; }
+.cp-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* La pastille choisie : un anneau d'accent et une coche dans l'encre qui se lit sur sa couleur (--ink, posée par js/color-palette.js). Le même anneau marque « Personnalisé… » quand la couleur du moment
+   n'est dans aucune pastille, et le bouton qui retire la couleur quand il n'y en a pas. */
+.cp-body button.is-active { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cp-swatch.is-active::after { content: ''; position: absolute; left: 50%; top: 45%; box-sizing: border-box; width: 5px; height: 9px; margin: -5px 0 0 -2.5px; border: solid var(--ink); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
+/* Les rangées de couleurs gardées : leur nom, puis leurs pastilles (dix au plus, la largeur de la palette). La croix de chacune n'apparaît qu'au survol ou au focus : un geste de souris pour la retirer,
+   Suppr au clavier. Une rangée vide tient sur une ligne : son nom, puis « Aucune ». */
+.cp-row { margin-top: 5px; }
+.cp-row-label { margin: 0 0 3px; font: 600 11px/1.1 var(--font-ui); color: var(--text-muted); }
+.cp-row-list { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 20px; }
+.cp-row-empty { font: 12px/1.2 var(--font-ui); color: var(--text-muted); }
+.cp-row.is-empty { display: flex; align-items: baseline; gap: 8px; }
+.cp-row.is-empty .cp-row-label { flex: none; min-width: 11.5em; margin: 0; }
+.cp-row.is-empty .cp-row-list { min-height: 0; }
+/* Panneau court et assez large : le corps du menu se met sur deux colonnes, à gauche la palette et le pied, à droite les rangées gardées, l'une sous l'autre, cinq pastilles de large (116 px). Une rangée
+   de dix couleurs passe sur deux lignes, sans rien ajouter à la hauteur du menu. Un nom trop long pour sa colonne est coupé (son infobulle le dit en entier). */
+@media (max-height: 480px) and (min-width: 480px) {
+  .cp-body { display: grid; grid-template-columns: auto 116px; grid-template-areas: "main rows" "foot rows"; column-gap: 14px; align-items: start; }
+  .cp-main { grid-area: main; }
+  .cp-rows { grid-area: rows; }
+  .cp-footer { grid-area: foot; }
+  .cp-row:first-child { margin-top: 0; }
+  .cp-row-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+  .cp-row.is-empty { display: block; }
+  .cp-row.is-empty .cp-row-label { min-width: 0; margin: 0 0 3px; }
+  .cp-row.is-empty .cp-row-list { min-height: 20px; }
+}
+.cp-saved { position: relative; display: inline-flex; }
+.cp-forget { position: absolute; top: -6px; right: -6px; z-index: 2; display: none; align-items: center; justify-content: center; box-sizing: border-box; width: 15px; height: 15px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); cursor: pointer; }
+.cp-forget svg { width: 9px; height: 9px; }
+.cp-forget:hover { background: var(--danger-soft); border-color: var(--danger); }
+.cp-saved:hover .cp-forget, .cp-saved:focus-within .cp-forget { display: inline-flex; }
+
+/* Le pied : « Personnalisé… » et, selon le menu, le bouton qui retire la couleur. */
+.cp-footer { display: flex; gap: 6px; margin-top: 5px; padding-top: 6px; border-top: 1px solid var(--border); }
+.cp-footer button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); cursor: pointer; font: 12px var(--font-ui); color: var(--text); white-space: nowrap; }
+.cp-footer button svg { width: 13px; height: 13px; }
+.cp-footer button:hover { background: var(--surface-sunken); }
+.cp-footer button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Le contenu de la fenêtre : à gauche le carré et le curseur de teinte, à droite l'aperçu, le code et les trois champs, dessous les cases « garder ». Tout tient dans les 376 px du panneau de 700 × 400. */
+.cp-editor-main { display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 20px; align-items: start; }
+.cp-left, .cp-right-col, .cp-right { min-width: 0; }
+.cp-area { position: relative; height: 124px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--border-strong); cursor: crosshair; touch-action: none; user-select: none; background: linear-gradient(to top, #000, rgba(0, 0, 0, 0)), linear-gradient(to right, #fff, var(--hue, #f00)); }
+.cp-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Le curseur du carré : un anneau blanc cerné de sombre, qui se lit sur toutes les couleurs du carré. */
+.cp-thumb { position: absolute; box-sizing: border-box; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 1px 3px rgba(0, 0, 0, .4); pointer-events: none; }
+.cp-hue { display: block; box-sizing: border-box; width: 100%; height: 14px; margin: 12px 0 0; padding: 0; border: 1px solid var(--border-strong); border-radius: 7px; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); -webkit-appearance: none; appearance: none; cursor: pointer; }
+.cp-hue::-webkit-slider-runnable-track { height: 12px; background: transparent; }
+.cp-hue::-webkit-slider-thumb { -webkit-appearance: none; box-sizing: border-box; width: 16px; height: 16px; margin-top: -2px; border: 2px solid #fff; border-radius: 50%; background: transparent; box-shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 1px 3px rgba(0, 0, 0, .4); }
+.cp-hue::-moz-range-track { height: 12px; background: transparent; }
+.cp-hue::-moz-range-thumb { box-sizing: border-box; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 50%; background: transparent; box-shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 1px 3px rgba(0, 0, 0, .4); }
+.cp-hue:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* L'aperçu : la couleur de départ et la nouvelle côte à côte (la nouvelle seule quand il n'y a pas de couleur de départ). */
+.cp-compare { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.cp-compare-cell[hidden] { display: none; }
+.cp-chip { height: 34px; border-radius: 6px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent); }
+.cp-caption { display: block; margin-top: 3px; font: 600 11px/1.2 var(--font-ui); color: var(--text-muted); text-align: center; }
+.cp-label { display: block; margin: 10px 0 4px; font: 700 12px var(--font-ui); color: var(--text); }
+.cp-input { display: block; width: 100%; height: 30px; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; padding: 0 8px; background: var(--surface); color: var(--text); }
+.cp-input[aria-invalid="true"] { border-color: var(--danger); }
+.cp-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cp-hex { max-width: 140px; font-variant-numeric: tabular-nums; }
+.cp-hint { min-height: 14px; margin: 3px 0 0; font: 11.5px/1.25 var(--font-ui); color: var(--danger-ink); }
+.cp-channels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+.cp-channel { display: flex; flex-direction: column; gap: 3px; font: 700 12px var(--font-ui); color: var(--text); }
+.cp-number { padding-right: 2px; font-variant-numeric: tabular-nums; }
+.cp-keep { min-width: 0; margin: 12px 0 2px; padding: 0; border: 0; }
+.cp-keep legend { margin: 0 0 6px; padding: 0; font: 700 12px var(--font-ui); color: var(--text); }
+.cp-keep-row { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font: 12.5px var(--font-ui); color: var(--text); cursor: pointer; }
+.cp-keep-row input { flex: none; margin: 0; }

@@ -46,7 +46,7 @@ export function serve() {
 
 // Une page d'essai dans un contexte neuf (stockage vide) au format du panneau de Grist. Rend la page et les avertissements de sa console ; les erreurs de la console, les erreurs de
 // page (dont les refus de la politique de sécurité du contenu) et les requêtes hors du serveur local vont dans `env`, que le script vérifie à la fin.
-export async function openPage(env, { colorScheme = 'light', locale = 'fr-FR', search = '', hash = '', init } = {}) {
+export async function openPage(env, { colorScheme = 'light', locale = 'fr-FR', search = '', hash = '', init, path = 'page.html' } = {}) {
   const context = await env.browser.newContext({ viewport: { width: 700, height: 400 }, colorScheme, locale });
   if (init) await context.addInitScript(init);
   const page = await context.newPage();
@@ -57,7 +57,7 @@ export async function openPage(env, { colorScheme = 'light', locale = 'fr-FR', s
     if (message.type() === 'warning') warnings.push(message.text());
   });
   page.on('request', request => { if (!request.url().startsWith(env.origin) && !request.url().startsWith('data:')) env.external.push(request.url()); });
-  await page.goto(`${env.origin}/navigateur/page.html${search}${hash}`);
+  await page.goto(`${env.origin}/navigateur/${path}${search}${hash}`);
   await page.waitForFunction(() => window.kit && window.kit.I18n);
   return { page, warnings };
 }

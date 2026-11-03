@@ -1,0 +1,14 @@
+/* La page d'essai du sélecteur de couleur : ses couleurs viennent des jetons du kit, comme celles d'une app. */
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 var(--font-ui); }
+main { padding: 12px; }
+h1 { margin: 0 0 4px; font-size: 16px; }
+.muted { margin: 0 0 8px; color: var(--text-muted); font-size: 12.5px; }
+.row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.row button { height: 28px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.row button:hover { background: var(--surface-sunken); }
+.row button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* La couleur choisie, montrée dans une pastille à côté du bouton. */
+.current { display: inline-block; width: 28px; height: 28px; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--current, transparent); }
+/* Le panneau de l'app : ce que l'app donne au menu (fond, liseré, ombre) ; le sélecteur ne le fournit pas. Posé sous la rangée de boutons. */
+.panel { position: absolute; left: 12px; top: 80px; z-index: var(--z-menu); padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-float); }
+.panel[hidden] { display: none; }
