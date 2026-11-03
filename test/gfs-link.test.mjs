@@ -252,6 +252,70 @@ test('installer : une seule demande par extension tant que la fenêtre de GFS es
   await assert.rejects(third, error => error.code === 'GFS_REFUSE' && /Lecture seule/.test(error.message));
 });
 
+test('choose : la demande part telle qu\'elle est écrite, la réponse est une clé { app, id, nom, type } ; annuler rend null ; une forme inconnue vaut null', async () => {
+  const { fake, link } = await hosted();
+  const chosen = link.choose({ types: ['document', 'grille', 'document', '', 7], apps: ['publipostage'], titre: 'Lier un modèle' });
+  assert.equal(fake.calls('choisir').length, 1);
+  assert.deepEqual(fake.calls('choisir')[0].args, { types: ['document', 'grille'], apps: ['publipostage'], titre: 'Lier un modèle' });
+  fake.replyTo('choisir', { app: 'publipostage', id: 16, nom: 'Contrat', type: 'document', inconnu: 'pas gardé' });
+  assert.deepEqual(await chosen, { app: 'publipostage', id: '16', nom: 'Contrat', type: 'document' });
+  const cancelled = link.choose({ types: ['document'] });
+  assert.deepEqual(fake.calls('choisir')[1].args, { types: ['document'] }, 'sans apps ni titre, rien de plus ne part');
+  fake.replyTo('choisir', null);
+  assert.equal(await cancelled, null);
+  const odd = link.choose({ types: ['document'] });
+  fake.replyTo('choisir', { app: 'publipostage', type: 'document' });
+  assert.equal(await odd, null, 'une réponse sans id n\'est pas une clé : l\'app ne lie rien');
+});
+
+test('choose : une seule demande à la fois (la même rend la même promesse), un refus garde son code, sans types rien ne part', async () => {
+  const { fake, link } = await hosted();
+  const first = link.choose({ types: ['document'] });
+  const same = link.choose({ types: ['document'] });
+  assert.equal(fake.calls('choisir').length, 1);
+  await assert.rejects(link.choose({ types: ['grille'] }), error => error.code === 'GFS_REFUSE' && /déjà en cours/.test(error.message));
+  assert.equal(fake.calls('choisir').length, 1);
+  fake.replyTo('choisir', { app: 'publipostage', id: '1', nom: 'A', type: 'document' });
+  assert.equal((await first).id, '1');
+  assert.equal((await same).id, '1');
+  const next = link.choose({ types: ['grille'] });
+  assert.equal(fake.calls('choisir').length, 2, 'le choix fini, un autre peut partir');
+  fake.deliver({ gfs: 0, type: 'erreur', id: fake.calls('choisir')[1].id, code: 'GFS_REFUSE', message: 'Une forme hors règle' });
+  await assert.rejects(next, error => error.code === 'GFS_REFUSE' && /hors règle/.test(error.message));
+  const before = fake.sent.length;
+  for (const bad of [undefined, {}, { types: [] }, { types: 'document' }]) await assert.rejects(link.choose(bad), error => error.code === 'GFS_REFUSE');
+  assert.equal(fake.sent.length, before);
+});
+
+test('openFile : la clé part en { app, fichier: { id, type } } ; la réponse dit si l\'app a ouvert ; un fichier disparu garde son code', async () => {
+  const { fake, link } = await hosted();
+  const opened = link.openFile({ app: 'publipostage', id: 16, type: 'document', nom: 'pas envoyé' });
+  const same = link.openFile({ app: 'publipostage', id: '16', type: 'document' });
+  assert.equal(fake.calls('ouvrir').length, 1);
+  assert.deepEqual(fake.calls('ouvrir')[0].args, { app: 'publipostage', fichier: { id: '16', type: 'document' } });
+  fake.replyTo('ouvrir', { ouvert: true });
+  assert.equal(await opened, true);
+  assert.equal(await same, true);
+  const declined = link.openFile({ app: 'publipostage', id: '17', type: 'document' });
+  fake.replyTo('ouvrir', { ouvert: false });
+  assert.equal(await declined, false);
+  const gone = link.openFile({ app: 'publipostage', id: '18', type: 'document' });
+  fake.deliver({ gfs: 0, type: 'erreur', id: fake.calls('ouvrir').at(-1).id, code: 'GFS_INTROUVABLE', message: 'Le fichier 18 n\'est plus là' });
+  await assert.rejects(gone, error => error.code === 'GFS_INTROUVABLE' && /n'est plus là/.test(error.message));
+  const before = fake.sent.length;
+  for (const bad of [undefined, {}, { app: 'publipostage' }, { app: 'publipostage', id: ' ', type: 'document' }, { id: '1', type: 'document' }]) await assert.rejects(link.openFile(bad), error => error.code === 'GFS_REFUSE');
+  assert.equal(fake.sent.length, before);
+});
+
+test('seule : choose et openFile refusent sans rien envoyer', async () => {
+  const fake = gfs({ search: '?language=fr' });
+  const link = createGfsLink({ host: fake.host });
+  await link.ready;
+  await assert.rejects(link.choose({ types: ['document'] }), /GFS absent/);
+  await assert.rejects(link.openFile({ app: 'a', id: '1', type: 't' }), /GFS absent/);
+  assert.equal(fake.sent.length, 0);
+});
+
 test('barre.masquer part sans `id` ; une valeur qui n\'est ni vraie ni fausse ne part pas', async () => {
   const { fake, link } = await hosted();
   assert.equal(link.hideBar(true), true);

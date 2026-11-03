@@ -11,6 +11,10 @@
 //   GfsLink.hideBar(true | false)                // l'app demande à ne pas avoir la barre (un diaporama plein cadre), puis la rend
 //   GfsLink.storageGet(clé), GfsLink.storageSet(clé, texte | null)   // les choix de la personne : chez GFS (le cadre n'a pas de stockage à lui, 5.3), dans le navigateur seule
 //   GfsLink.extensions(), GfsLink.library(id), GfsLink.onExtensions(fn), GfsLink.install(id)   // les extensions actives, la source de leurs bibliothèques (5.2 point 4, 5.4)
+//   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
+//   GfsLink.openFile({ app, id, type })          // GFS ouvre ce fichier dans son app : { ouvert } ; dans une autre app que celle-ci, elle prend la place de celle-ci (5.4, point 7)
+// `choose` et `openFile` sont les liens entre apps : l'app garde la clé { app, id, type } que `choose` rend (le nom n'est qu'une étiquette) et la rend à `openFile` ; un fichier disparu rejette `openFile`
+// avec `GFS_INTROUVABLE`, une personne qui ne débloque pas l'app avec `GFS_ANNULE`, jamais le lien lui-même.
 // Chaque abonné (`on…`) est rappelé quand la valeur change, l'arrivée du contexte comprise, et chaque `on…` rend de quoi se désabonner. Seule, l'app n'écoute ni n'envoie rien : le
 // contexte, l'ouverture, la langue et la barre sont null, les extensions vides. Un message n'est lu que s'il vient du cadre parent (`event.source`) et porte le contrat de GFS ;
 // l'écoute passe par addEventListener, jamais par `window.onmessage =`, qui remplacerait celle du script d'API de Grist.
@@ -55,6 +59,16 @@ function normalizeBar(raw) {
 // n'est pas un objet (un GFS d'avant le 21/10 n'en donne pas : les choix ne se gardent alors pas).
 function normalizeStorage(raw) {
   return isObject(raw) ? new Map(Object.entries(raw).filter(([key, value]) => validKey(key) && typeof value === 'string')) : null;
+}
+
+// La clé d'un lien (5.4, points 2 et 7) : { app, id, type } avec l'`id` pris comme texte, ou null quand ce n'est pas une clé. `choisir` y ajoute le `nom` que la personne a vu.
+function normalizeKey(raw) {
+  if (!isObject(raw) || typeof raw.app !== 'string' || raw.app === '' || raw.id == null || String(raw.id).trim() === '' || typeof raw.type !== 'string' || raw.type === '') return null;
+  return { app: raw.app, id: String(raw.id).trim(), type: raw.type };
+}
+function normalizeChoice(raw) {
+  const key = normalizeKey(raw);
+  return key ? { app: key.app, id: key.id, nom: text(raw.nom), type: key.type } : null;
 }
 
 // `extensions` et `bibliotheques` (5.2, point 4) : des identifiants, et pour chaque bibliothèque { src, integrite, forme } (`forme` manque chez un GFS d'avant le 16/10 : un script classique).
@@ -225,6 +239,42 @@ function install(link, extension) {
   return link.installing.get(extension);
 }
 
+const failure = (message, code) => Promise.reject(Object.assign(new Error(message), { code }));
+
+// Une demande de lien en cours n'est posée qu'une fois : la même (deux clics pendant que l'explorateur de GFS est ouvert) rend la même promesse, un autre choix en même temps est refusé.
+function shared(link, key, start, alone) {
+  if (alone && [...link.linking.keys()].some(other => other.startsWith(alone) && other !== key)) return failure('Un choix de fichier est déjà en cours', 'GFS_REFUSE');
+  if (!link.linking.has(key)) {
+    const request = start();
+    const settled = () => link.linking.delete(key);
+    link.linking.set(key, request);
+    request.then(settled, settled);
+  }
+  return link.linking.get(key);
+}
+
+// Fait désigner à la personne un fichier d'une autre app, dans l'explorateur de GFS en mode choix (5.4, point 2). `types` : les types voulus (GFS n'en montre que ceux que les apps offrent à choisir) ;
+// `apps` : seulement celles-ci ; `titre` : le texte que GFS montre, déjà traduit. Rend { app, id, nom, type }, ou null quand la personne annule. Sans types, la demande ne part pas.
+function choose(link, request) {
+  if (!link.hosted) return Promise.reject(new Error('GFS absent'));
+  const list = value => (Array.isArray(value) ? [...new Set(value.filter(item => typeof item === 'string' && item.trim() !== ''))] : []);
+  const args = { types: list(request && request.types) };
+  if (request && request.apps !== undefined) args.apps = list(request.apps);
+  if (request && typeof request.titre === 'string') args.titre = request.titre;
+  if (args.types.length === 0) return failure('choose : au moins un type est attendu', 'GFS_REFUSE');
+  return shared(link, `choisir:${JSON.stringify(args)}`, () => call(link, 'choisir', args).then(normalizeChoice), 'choisir:');
+}
+
+// Demande à GFS d'ouvrir le fichier que désigne la clé { app, id, type } (5.4, point 7). Rend `true` quand l'app l'a ouvert, `false` quand la personne a annulé dans l'app. Si l'app visée n'est pas
+// celle-ci, elle prend sa place (une seule app à la fois) : la promesse ne se règle pas. Un fichier disparu rejette avec `GFS_INTROUVABLE`, une app que la personne ne débloque pas avec `GFS_ANNULE`.
+function openFile(link, target) {
+  if (!link.hosted) return Promise.reject(new Error('GFS absent'));
+  const key = normalizeKey(target);
+  if (!key) return failure('openFile : { app, id, type } est attendu', 'GFS_REFUSE');
+  const args = { app: key.app, fichier: { id: key.id, type: key.type } };
+  return shared(link, `ouvrir:${JSON.stringify(args)}`, () => call(link, 'ouvrir', args).then(data => isObject(data) && data.ouvert === true));
+}
+
 function onOpen(link, fn) {
   link.openHandler = fn;
   for (const request of link.earlyOpens.splice(0)) deliverOpen(link, request);
@@ -238,7 +288,7 @@ function newLink(host) {
     host, contract, hosted: contract !== null, known: false, nextId: 1,
     context: null, opening: null, language: null, bar: null, storage: null, extensions: [], libraries: new Map(),
     listeners: { language: new Set(), bar: new Set(), extensions: new Set() },
-    pending: new Map(), installing: new Map(), openHandler: null, earlyOpens: [],
+    pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [],
   };
 }
 
@@ -268,6 +318,8 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     storageSet: (key, value) => storageSet(link, key, value),
     hideBar: hidden => hideBar(link, hidden),
     install: extension => install(link, extension),
+    choose: request => choose(link, request),
+    openFile: target => openFile(link, target),
     // Un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le fait mourir (contrats 1.3, point 1) : hébergée, l'app l'ouvre dans un nouvel onglet. Seule, faux.
     opensInNewTab: href => link.hosted && /^(?:mailto|tel):/i.test(String(href == null ? '' : href).trim()),
     onOpen: fn => onOpen(link, fn),

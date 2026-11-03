@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.3.0 : les liens entre apps (03/11/2026)
+
+Une app peut lier un fichier d'une autre app et le rouvrir plus tard, par GFS (contrats de GFS, 5.4, points 2 et 7). Rien ne change pour une app qui n'appelle pas ces deux fonctions.
+
+- **Lier un fichier** : `GfsLink.choose({ types, apps?, titre? })` ouvre l'explorateur de GFS en mode choix et rend `{ app, id, nom, type }`, ou `null` si la personne annule. `types` : les types voulus (GFS ne montre que ceux que les apps offrent à choisir) ; `apps` : seulement celles-ci ; `titre` : le texte que GFS montre, déjà traduit. Une seule demande à la fois : la même, posée deux fois, rend la même promesse ; une autre en même temps est refusée (`GFS_REFUSE`).
+- **Rouvrir le lien** : `GfsLink.openFile({ app, id, type })` demande à GFS d'ouvrir ce fichier dans son app. L'app garde la clé `{ app, id, type }` (le nom n'est qu'une étiquette). Rend `true` quand l'app visée l'a ouvert ; dans une autre app que la sienne, celle-ci prend sa place (une seule app à la fois) et la promesse ne se règle pas. Un fichier disparu rejette avec `GFS_INTROUVABLE` (GFS le dit à la personne, l'app garde son lien), une app que la personne ne débloque pas avec `GFS_ANNULE`.
+- **Hors de GFS** : seule, l'app n'appelle personne ; les deux fonctions rejettent (`GFS absent`) et l'app grise « Lier un fichier ».
+- **Essais** : 60 sous Node, dont 22 pour le lien ; dans Chromium, la demande part dans la forme du contrat, la clé rendue est lue, l'annulation rend `null` et un refus garde son code (212 vérifications en tout). Le choix dans l'explorateur de GFS se mesure dans le labo de GFS, dans un vrai Grist.
+
 ## 0.2.0 : le lien avec GFS (21/10/2026)
 
 Le dialogue d'une app avec GFS, le widget qui l'héberge, écrit une fois pour toutes les apps. Extrait de Publipostage+ (`js/gfs-link.js` à `487d66b`), avec la barre de GFS (contrats de GFS, 5.2 point 7) et les choix de la personne (5.3) en plus. Rien ne change pour une app qui ne l'importe pas.

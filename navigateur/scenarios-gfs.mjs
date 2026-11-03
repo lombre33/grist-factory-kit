@@ -57,5 +57,29 @@ export async function gfsLink(env) {
   now = await state();
   check('« ouvrir » arrive à l\'app (l\'identifiant du fichier en texte) et la réponse reprend son id',
     JSON.stringify(replies) === JSON.stringify([{ gfs: 0, id: 41, type: 'reponse', data: { ouvert: true } }]) && now.seen.ouvrir.length === 1 && now.seen.ouvrir[0].fichier.id === '16', { replies, seen: now.seen });
+
+  // Les liens entre apps (5.4) : la demande part dans la forme du contrat, la clé rendue par GFS est lue, l'annulation rend null, un refus de GFS garde son code.
+  const calls = name => fromApp(page, data => data && data.type === 'appel' && data.nom === name);
+  const later = async (name, count) => until(() => calls(name).then(found => (found.length >= count ? found : null)));
+  const answer = (id, message) => page.evaluate(([askId, body]) => window.hote.send({ gfs: 0, id: askId, ...body }), [id, message]);
+  await app.evaluate(() => { window.cadre.link = window.cadre.GfsLink.choose({ types: ['document', 'document', 'grille'], titre: 'Lier un contrat' }); });
+  const asks = await later('choisir', 1);
+  await answer(asks[0].id, { type: 'reponse', data: { app: 'publipostage', id: 12, nom: 'Contrat Martin', type: 'document' } });
+  const chosen = await app.evaluate(() => window.cadre.link);
+  check('« choisir » part avec les types sans doublon et le titre ; la clé rendue par GFS est lue (identifiant en texte, nom)',
+    asks.length === 1 && JSON.stringify(asks[0].args) === JSON.stringify({ types: ['document', 'grille'], titre: 'Lier un contrat' })
+    && JSON.stringify(chosen) === JSON.stringify({ app: 'publipostage', id: '12', nom: 'Contrat Martin', type: 'document' }), { asks, chosen });
+
+  await app.evaluate(() => { window.cadre.link = window.cadre.GfsLink.choose({ types: ['grille'] }); });
+  const second = await later('choisir', 2);
+  await answer(second[1].id, { type: 'reponse', data: null });
+  check('une personne qui annule rend null à l\'app', (await app.evaluate(() => window.cadre.link)) === null, second);
+
+  await app.evaluate(() => { window.cadre.link = window.cadre.GfsLink.openFile({ app: 'publipostage', id: 12, type: 'document' }).then(() => 'ouvert', error => error.code); });
+  const opens = await later('ouvrir', 1);
+  await answer(opens[0].id, { type: 'erreur', code: 'GFS_INTROUVABLE', message: 'Le fichier n\'est plus là.' });
+  const refused = await app.evaluate(() => window.cadre.link);
+  check('« ouvrir » part avec { app, fichier: { id (texte), type } } ; un fichier disparu rejette avec son code, jamais avec le lien lui-même',
+    opens.length === 1 && JSON.stringify(opens[0].args) === JSON.stringify({ app: 'publipostage', fichier: { id: '12', type: 'document' } }) && refused === 'GFS_INTROUVABLE', { opens, refused });
   await context.close();
 }

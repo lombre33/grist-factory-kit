@@ -2,7 +2,7 @@
 
 Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, et le lien avec GFS, le widget qui héberge les apps. Des modules ES pour le navigateur et deux feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
 
-Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.2.0** ([CHANGELOG](CHANGELOG.md)).
+Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.3.0** ([CHANGELOG](CHANGELOG.md)).
 
 Le kit est la couche du bas : il n'importe rien (ni app, ni GFS, ni bibliothèque). Une app importe le kit, jamais une autre app ; une extension importe son app et le kit, jamais une autre extension.
 
@@ -12,8 +12,8 @@ Référencer le kit à une étiquette (un commit à part dans l'app, relu) :
 
 ```sh
 git submodule add https://github.com/lombre33/grist-factory-kit.git kit
-git -C kit checkout v0.2.0
-git add kit && git commit -m "Kit v0.2.0"
+git -C kit checkout v0.3.0
+git add kit && git commit -m "Kit v0.3.0"
 ```
 
 Dans la page, les deux feuilles avant celle de l'app :
@@ -54,12 +54,15 @@ GfsLink.onOpen(async ({ fichier, type }) => openFile(fichier, type));   // le do
 GfsLink.onLanguage(language => I18n.setLanguage(language));
 GfsLink.onBar(bar => keepClear(bar));                  // ce que la barre de GFS recouvre : { bord, epaisseur, zone } ou null
 GfsLink.storageSet('monapp_zoom', '1.2');              // les choix de la personne : chez GFS, ou dans le navigateur seule
+const lien = await GfsLink.choose({ types: ['document', 'grille'], titre: I18n.t('monapp.pick') });   // un fichier d'une autre app : { app, id, nom, type }, ou null si la personne annule
+await GfsLink.openFile({ app: lien.app, id: lien.id, type: lien.type });                             // GFS l'ouvre dans son app, plus tard, par la clé gardée
 ```
 
 - **Le contexte** (`GfsLink.context()`) garde ses champs connus (document, page, accès, lecture seule…) et rien d'autre ; chaque `on…` rappelle son abonné quand la valeur change vraiment, avec sa propre copie, et rend de quoi se désabonner.
 - **Les choix de la personne** : dans GFS, le cadre de l'app n'a pas de stockage à lui ; `storageGet` lit la copie que le contexte a rendue, `storageSet` la change et l'envoie à GFS (`valeur` null retire la clé). Une clé fait 1 à 64 caractères parmi lettres, chiffres, `_ . : -`, une valeur est un texte. Seule, les deux passent par le navigateur, qui peut refuser sans rien casser.
 - **La barre de GFS** se pose par-dessus le cadre de l'app : l'app écarte de `zone` ce qu'elle met à ce bord, sans réserver de bande. `GfsLink.hideBar(true)` la retire pour un diaporama plein cadre, qui offre alors sa propre sortie (Échap), puis `hideBar(false)`.
 - **Les extensions** : `extensions()`, `library(id)` (la source de chaque bibliothèque, avec son empreinte), `onExtensions(fn)`, et `install(id)`, qui ouvre la fenêtre d'installation de GFS à la ligne de l'extension (le clic sur une fonction grisée).
+- **Les liens entre apps** : `choose({ types, apps?, titre? })` fait désigner un fichier d'une autre app dans l'explorateur de GFS (`types` : ceux que les apps offrent à choisir ; `titre` : le texte que GFS montre, déjà traduit) et rend `{ app, id, nom, type }`, ou `null` si la personne annule. L'app garde la clé `{ app, id, type }` (le nom n'est qu'une étiquette) et la rend à `openFile(clé)`, qui rend `true` quand l'app visée a ouvert le fichier ; dans une autre app que la sienne, celle-ci prend sa place (une seule à la fois) et la promesse ne se règle pas. Un fichier disparu rejette avec `GFS_INTROUVABLE`, une app que la personne ne débloque pas avec `GFS_ANNULE`, une demande mal formée ou un second choix en même temps avec `GFS_REFUSE` : l'app ne supprime jamais un lien d'elle-même. Seule, les deux rejettent (`GFS absent`) : l'app grise « Lier un fichier ».
 - `opensInNewTab(href)` : un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le ferait mourir ; hébergée, l'app l'ouvre dans un nouvel onglet.
 - L'écoute passe par `addEventListener('message')` et ne lit que le cadre parent, jamais `window.onmessage =` (qui remplacerait celle du script d'API de Grist). `createGfsLink({ host, timeoutMs })` fait un lien de plus pour un essai.
 
@@ -99,7 +102,7 @@ Prévu au plan de GFS (cahier, 4.5), pas encore dans le kit, parce que le premie
 ## Contrôles
 
 ```sh
-npm test                    # 56 essais sous Node : traduction, jetons et contrastes, lien avec GFS, hygiène du code
+npm test                    # 60 essais sous Node : traduction, jetons et contrastes, lien avec GFS, hygiène du code
 npm run test:navigateur     # Chromium (Playwright), 700 × 400, souris et clavier, clair et sombre, français et anglais
 ```
 
