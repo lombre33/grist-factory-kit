@@ -3,31 +3,32 @@
 // (voir README, « Contrôles »).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { code, fichiersDe } from './sources.mjs';
 
-const dir = name => new URL(`../${name}/`, import.meta.url);
-const files = name => readdirSync(dir(name)).filter(file => /\.(js|css)$/.test(file)).map(file => ({ file: `${name}/${file}`, text: readFileSync(new URL(file, dir(name)), 'utf8') }));
-const sources = files('js');
-const sheets = files('css');
-
-// Le code sans ses commentaires ni ses chaînes : ce que les règles visent. Une chaîne de caractères ou un commentaire qui cite `innerHTML` pour l'interdire n'est pas un emploi.
-function code(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1')
-    .replace(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"/g, "''")
-    .replace(/`(?:[^`\\]|\\.)*`/g, '``');
-}
+// Les fichiers de js/ (js/calendrier/ et ses sous-dossiers compris) et de css/.
+const sources = fichiersDe('js', /\.js$/);
+const sheets = fichiersDe('css', /\.css$/);
+const known = new Set(sources.map(({ file }) => file));
 
 test('le kit a des modules et des feuilles à tester', () => {
   assert.ok(sources.length >= 7);
   assert.ok(sheets.length >= 2);
 });
 
-test('le kit n\'importe rien d\'extérieur : que des fichiers du kit, par des chemins relatifs', () => {
+test('le kit n\'importe rien d\'extérieur : que des fichiers de js/, par des chemins relatifs', () => {
   for (const { file, text } of sources) {
-    for (const [, specifier] of text.matchAll(/^\s*import\s[^;]*?from\s+'([^']+)'/gm)) assert.match(specifier, /^\.\/[a-z0-9-]+\.js$/, `${file} importe ${specifier}`);
+    for (const [, specifier] of text.matchAll(/^\s*(?:import|export)\s[^;]*?from\s+'([^']+)'/gm)) {
+      assert.match(specifier, /^\.{1,2}\/(?:\.\.\/)*(?:[a-z0-9-]+\/)*[a-z0-9-]+\.js$/, `${file} importe ${specifier}`);
+      assert.ok(known.has(new URL(specifier, `file:///${file}`).pathname.slice(1)), `${file} importe ${specifier}, qui n'est pas un fichier de js/`);
+    }
     assert.doesNotMatch(code(text), /\bimport\s*\(|\brequire\s*\(|https?:\/\//, `${file} : import dynamique ou adresse`);
+  }
+});
+
+// Le calendrier est un module facultatif du kit : une app qui n'en veut pas ne le charge pas, et rien d'autre dans js/ ne dépend de lui.
+test('rien dans js/ hors js/calendrier/ n\'importe le calendrier', () => {
+  for (const { file, text } of sources.filter(({ file }) => !file.startsWith('js/calendrier/'))) {
+    for (const [, specifier] of text.matchAll(/^\s*(?:import|export)\s[^;]*?from\s+'([^']+)'/gm)) assert.doesNotMatch(specifier, /calendrier\//, `${file} importe ${specifier}`);
   }
 });
 

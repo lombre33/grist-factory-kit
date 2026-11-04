@@ -1,0 +1,100 @@
+/* Le calendrier : les jetons de la charte (kit/css/tokens.css), jamais de couleur en dur ; les jetons de forme avec leur valeur d'origine en repli (consigne 010 de GFS). */
+.cal { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; box-sizing: border-box; background: var(--surface); color: var(--text); font-family: var(--font-ui); font-size: 13px; line-height: 1.3; }
+.cal *, .cal *::before, .cal *::after { box-sizing: border-box; }
+
+/* La barre */
+.cal-barre { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.cal-titre { margin: 0 4px; font-size: 16px; font-weight: 650; min-width: 9ch; }
+.cal-ressort { flex: 1 1 auto; }
+.cal-fleche, .cal-aujourdhui, .cal-vue, .cal-plateau-bouton { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 7px); padding: 4px 10px; cursor: pointer; min-height: 28px; }
+.cal-fleche { padding: 4px 8px; font-size: 16px; line-height: 1; }
+.cal-fleche:hover, .cal-aujourdhui:hover, .cal-vue:hover, .cal-plateau-bouton:hover { background: var(--surface-sunken); }
+.cal-vues { display: inline-flex; }
+.cal-vue { border-radius: 0; margin-left: -1px; }
+.cal-vue:first-child { border-radius: var(--radius-sm, 7px) 0 0 var(--radius-sm, 7px); margin-left: 0; }
+.cal-vue:last-child { border-radius: 0 var(--radius-sm, 7px) var(--radius-sm, 7px) 0; }
+.cal-vue[data-actif], .cal-plateau-bouton[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-soft-border); color: var(--accent-ink); font-weight: 600; }
+.cal [aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.cal-compte { display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent-solid, var(--accent)); color: var(--on-accent); font-size: 11px; font-weight: 600; text-align: center; }
+.cal-plateau-bouton[aria-disabled="true"] .cal-compte { background: var(--border-strong); color: var(--text); }
+.cal :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.cal-avis { padding: 4px 12px; background: var(--danger-soft); color: var(--danger-ink); font-size: 12px; }
+
+/* Le corps : la grille et, si on l'ouvre, le plateau « Sans date » */
+.cal-milieu { display: flex; flex: 1 1 auto; min-height: 0; }
+.cal-principal { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.cal-entete, .cal-ligne { display: flex; }
+.cal-entete { border-bottom: 1px solid var(--border); background: var(--surface-sunken); color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.cal-noms { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); flex: 1 1 auto; }
+.cal-nom { padding: 4px 6px; }
+.cal-sem { flex: 0 0 34px; padding: 6px 2px 0 6px; color: var(--text-muted); font-size: 10px; }
+.cal-corps { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; }
+.cal-ligne { flex: 1 1 0; min-height: 56px; border-top: 1px solid var(--border); }
+.cal-ligne:first-child { border-top: 0; }
+.cal-semaine .cal-ligne { min-height: 120px; }
+.cal-zone { position: relative; flex: 1 1 auto; min-width: 0; }
+
+/* Le fond (cellules cliquables et déposables), la grille des barres par-dessus, la couche des saisies et des listes */
+.cal-fonds { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-fond { border-left: 1px solid var(--border); cursor: cell; }
+.cal-fond:first-child { border-left: 0; }
+.cal-hors-mois { background: var(--surface-sunken); }
+.cal-aujourdhui-fond { background: var(--accent-soft); }
+.cal-survol { background: var(--accent-soft); outline: 2px dashed var(--accent); outline-offset: -2px; }
+.cal-jours { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: auto repeat(var(--cal-pistes, 2), auto) auto; align-content: start; pointer-events: none; padding-bottom: 2px; }
+.cal-jours > * { pointer-events: auto; }
+.cal-flottant { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-menu); }
+.cal-flottant > * { pointer-events: auto; }
+
+.cal-num { grid-column: var(--cal-col); grid-row: var(--cal-piste); justify-self: start; margin: 3px 0 2px 4px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cal-num:hover { background: var(--surface-sunken); }
+.cal-num-hors-mois { color: var(--text-muted); font-weight: 500; }
+.cal-num-aujourdhui, .cal-num-aujourdhui:hover { background: var(--accent-solid, var(--accent)); color: var(--on-accent); }
+
+.cal-evt { grid-column: var(--cal-col) / span var(--cal-span); grid-row: var(--cal-piste); margin: 0 3px 2px; padding: 1px 6px; min-height: 18px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; font-weight: 600;
+  background: var(--cal-fond, var(--accent-soft)); color: var(--cal-texte, var(--accent-ink)); border-left: 3px solid var(--cal-texte, var(--accent)); border-radius: var(--radius-xs, 4px); cursor: grab; }
+.cal-evt:hover { filter: brightness(.96); }
+.cal-evt-avant { margin-left: 0; border-left-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.cal-evt-apres { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.cal-heure { margin-right: 4px; font-weight: 500; opacity: .85; font-variant-numeric: tabular-nums; }
+.cal-grise { cursor: default; }
+.cal-glisse { opacity: .45; }
+.cal-plus { grid-column: var(--cal-col); grid-row: 1; margin: 3px 4px 0 0; padding: 0 5px; align-self: center; justify-self: end; font-size: 11px; font-weight: 600; color: var(--accent-ink); border-radius: var(--radius-xs, 4px); cursor: pointer; }
+.cal-plus:hover { background: var(--accent-soft); }
+
+/* La saisie rapide et la liste du jour */
+.cal-saisie { position: absolute; left: var(--cal-x); top: var(--cal-y); width: var(--cal-l); padding: 0; }
+.cal-saisie-champ { width: 100%; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius-xs, 4px); padding: 3px 6px; box-shadow: var(--shadow-float); }
+.cal-saisie-champ[aria-invalid="true"] { border-color: var(--danger); }
+.cal-liste { position: absolute; left: var(--cal-x); top: var(--cal-y); width: 240px; max-width: calc(100% - 8px); max-height: 90%; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 7px); box-shadow: var(--shadow-float); }
+.cal-liste-titre { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 650; text-transform: capitalize; }
+.cal-liste-fermer { font: inherit; font-size: 16px; line-height: 1; color: var(--text-muted); background: none; border: 0; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-xs, 4px); }
+.cal-liste-fermer:hover { background: var(--surface-sunken); }
+.cal-liste-corps { overflow: auto; padding: 4px; }
+.cal-liste-ligne { margin: 2px 0; padding: 3px 8px; font-size: 12px; font-weight: 600; background: var(--cal-fond, var(--accent-soft)); color: var(--cal-texte, var(--accent-ink)); border-left: 3px solid var(--cal-texte, var(--accent)); border-radius: var(--radius-xs, 4px); cursor: pointer; }
+
+/* Le plateau « Sans date » */
+.cal-plateau { flex: 0 0 170px; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-left: 1px solid var(--border); background: var(--surface-sunken); overflow: auto; }
+.cal-plateau-aide { margin: 0; font-size: 11px; color: var(--text-muted); }
+.cal-puces { display: flex; flex-direction: column; gap: 4px; }
+.cal-puce { padding: 3px 8px; font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: var(--cal-fond, var(--surface)); color: var(--cal-texte, var(--text)); border: 1px solid var(--border-strong); border-radius: var(--radius-xs, 4px); cursor: grab; }
+
+/* Les vues Semaine et Jour : la bande des jours entiers, puis la grille horaire qui défile */
+.cal { --cal-heure-h: 40px; }
+.cal-sem { flex: 0 0 40px; }
+.cal-bande { flex: 0 0 auto; min-height: 0; border-bottom: 1px solid var(--border); }
+.cal-bande .cal-zone { min-height: 52px; }
+.cal-bande-jour { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-height: 36px; padding: 4px 0; cursor: cell; }
+.cal-bande-jour .cal-evt { grid-column: auto; grid-row: auto; }
+.cal-heures { display: flex; flex: 1 1 auto; min-height: 0; overflow-y: scroll; }
+.cal-etiquettes { flex: 0 0 40px; }
+.cal-etiquette { height: var(--cal-heure-h); padding: 0 4px 0 0; text-align: right; font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; transform: translateY(-6px); }
+.cal-colonnes { display: grid; grid-template-columns: repeat(var(--cal-n, 7), minmax(0, 1fr)); flex: 1 1 auto; }
+.cal-colonne { position: relative; height: calc(24 * var(--cal-heure-h)); border-left: 1px solid var(--border); cursor: cell;
+  background-image: linear-gradient(to bottom, var(--border) 1px, transparent 1px); background-size: 100% var(--cal-heure-h); }
+.cal-colonne:first-child { border-left: 0; }
+.cal-bloc { position: absolute; top: calc(var(--cal-debut) * 1%); height: calc(var(--cal-duree) * 1%); left: calc(var(--cal-rang) / var(--cal-rangs) * 100%); width: calc(100% / var(--cal-rangs));
+  padding: 2px 6px; overflow: hidden; font-size: 12px; font-weight: 600; background: var(--cal-fond, var(--accent-soft)); color: var(--cal-texte, var(--accent-ink));
+  border-left: 3px solid var(--cal-texte, var(--accent)); border-radius: var(--radius-xs, 4px); outline: 1px solid var(--surface); cursor: grab; }
+.cal-bloc:hover { filter: brightness(.96); }
