@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.9.0 : répondre à « fermer » (04/11/2026)
+
+GFS appelle `fermer` sur l'app active avant de la remplacer par une autre (contrats de GFS, 5.4 points 3 et 7). Le client du kit répondait `GFS_INCONNU` à tout appel sauf `ouvrir` : une app qui passe par le kit ne pouvait donc ni enregistrer ni garder la personne avant de partir. Rien ne change pour une app qui n'appelle pas la nouvelle fonction : elle répond `GFS_INCONNU` comme avant et part sans question.
+
+- **`GfsLink.onClose(fn)`** : `fn({ raison })` s'exécute quand GFS va remplacer l'app (`raison` : `app`, `explorateur`, `nouveau`, `importer`, `lire` ou `lien`, 40 signes au plus, vide si GFS n'en donne pas). `fn` enregistre ce qui attend ou pose sa question, puis rend vrai si l'app peut partir ou faux si la personne reste (promesse permise). Seul `true` ferme. Une erreur de `fn` part chez GFS (`erreur`, son texte en 200 signes au plus, un avertissement en console) : la personne décide. Un seul abonné, remplacé par le suivant ; la fonction rendue le retire. Un appel sans `id` n'attend aucune réponse.
+- **Ce que GFS en fait** : vrai ou `GFS_INCONNU` → le cadre est détruit ; faux → l'app reste et la personne revient où elle était ; 10 secondes de silence ou une erreur → fenêtre de GFS « Fermer quand même » ou « Attendre ». L'enregistrement automatique allumé enregistre et rend vrai sans question ; coupé avec des modifications, l'app pose sa question.
+- **Pour le code** : `deliverOpen` et `deliverClose` partagent une seule fonction de réponse (`deliver`) ; le message d'avertissement de l'ouverture est inchangé.
+- **Essais** : 191 sous Node (4 de plus : la raison et les trois réponses, la raison mal formée ou trop longue avec l'erreur et l'appel sans `id`, le désabonnement et le retour à `GFS_INCONNU`, un autre cadre que le parent) ; ils échouent sur l'ancien code. Dans Chromium, 2 vérifications de plus (689 en tout) sur le cadre isolé comme chez GFS : `fermer` sans abonné reçoit `GFS_INCONNU` avec son `id`, puis avec `onClose` la raison arrive et chaque réponse reprend son `id`. **Pas mesuré ici** : une vraie app qui répond (GFS le mesure dans son labo avec `run-fermer.mjs`).
+
 ## 0.8.0 : le calendrier (04/11/2026)
 
 Le module de calendrier de Calendar+ (`grist-widget-calendar-plus`, version 2 avec les heures, commit `531e0cd`) est rangé dans le kit, que Tuesday et Calendar+ montent chacun chez eux (consigne 006 de GFS : le calendrier est un module du kit, voie A, choix du porteur le 03/11). Rien ne change pour une app qui ne l'importe pas : rien d'autre dans `js/` n'en dépend.

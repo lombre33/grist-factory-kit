@@ -16,6 +16,7 @@
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
 //   GfsLink.openFile({ app, id, type })          // GFS ouvre ce fichier dans son app : { ouvert } ; dans une autre app que celle-ci, elle prend la place de celle-ci (5.4, point 7)
 //   GfsLink.deposit({ fichier, nom, type?, lot?, suivants?, dossier? })   // GFS garde ce fichier que l'app vient de fabriquer (un export en PDF) : { statut, id, nom } (5.4, point 9)
+//   GfsLink.onClose(fn)                          // GFS va remplacer l'app par une autre (fenêtre des apps, fichier d'une autre app, lien) : fn({ raison }) enregistre ce qui attend ou pose sa question (Enregistrer, Abandonner, Annuler), puis rend vrai si l'app peut partir, faux si la personne reste (5.4, point 3)
 // `choose` et `openFile` sont les liens entre apps : l'app garde la clé { app, id, type } que `choose` rend (le nom n'est qu'une étiquette) et la rend à `openFile` ; un fichier disparu rejette `openFile`
 // avec `GFS_INTROUVABLE`, une personne qui ne débloque pas l'app avec `GFS_ANNULE`, jamais le lien lui-même.
 // `deposit` est le rangement d'un export : l'app donne les octets (un `File` ou un `Blob`) et un nom, jamais un jeton ; GFS seul écrit ce qu'il garde, pose lui-même la question « Ce nom est déjà pris »
@@ -23,6 +24,9 @@
 // que GFS a donné) ou `ignore` (la personne n'en veut pas : `id` et `nom` sont null). Les fichiers d'un même export en lot portent le même `lot` et, pour chacun, le nombre de `suivants` à ranger encore (0
 // pour le dernier) : la personne peut alors répondre une fois pour tous. GFS ne dit rien par-dessus l'app : un refus rejette avec son `code` (`GFS_REFUSE`, `GFS_ACCES`, `GFS_LECTURE_SEULE`, `GFS_ANNULE`,
 // `GFS_ECHEC`, `GFS_INACTIF`, ou `GFS_INCONNU` d'un GFS qui ne sait pas encore ranger) et sa phrase, que l'app écrit dans son coin d'état. Chaque appel est un fichier de plus : GFS les prend l'un après l'autre.
+// `onClose` est la réponse à l'appel `fermer` : GFS ne détruit le cadre de l'app qu'après `{ ferme: true }`. L'abonné rend (ou résout) exactement `true` pour laisser partir l'app, après avoir enregistré
+// ce qui attend (enregistrement automatique allumé : sans question) ou après la question de l'app ; tout autre retour est `{ ferme: false }` (la personne a annulé : tout reste en place) ; une erreur qu'il lève part avec
+// son texte et GFS demande à la personne. Sans abonné, l'app répond `GFS_INCONNU` et part comme avant ; sans réponse au bout de 10 secondes, GFS demande à la personne s'il doit fermer quand même.
 // Chaque abonné (`on…`) est rappelé quand la valeur change, l'arrivée du contexte comprise, et chaque `on…` rend de quoi se désabonner. Seule, l'app n'écoute ni n'envoie rien : le
 // contexte, l'ouverture, la langue, la barre, l'identité et l'ambiance sont null, les extensions vides. Un message n'est lu que s'il vient du cadre parent (`event.source`) et porte le contrat de GFS ;
 // l'écoute passe par addEventListener, jamais par `window.onmessage =`, qui remplacerait celle du script d'API de Grist.
@@ -215,21 +219,37 @@ function answered(link, message) {
   else entry.reject(Object.assign(new Error(String(message.message || message.code || 'erreur de GFS')), { code: typeof message.code === 'string' ? message.code : 'GFS_ERREUR' }));
 }
 
-// Donne l'appel `ouvrir` à l'abonné et rend sa réponse à GFS (5.4, point 1) : `{ ouvert: true }` quand il rend vrai, `{ ouvert: false }` sinon (la personne a annulé, ou l'app a dit
-// elle-même pourquoi : GFS n'ajoute rien) ; une erreur qu'il lève part avec son texte, que GFS dit à la personne. Sans `id`, l'appel n'attend pas de réponse (5.1, point 2).
-function deliverOpen(link, request) {
-  const reply = fields => { if (request.id !== null) post(link, { id: request.id, ...fields }); };
+// Donne un appel de GFS à l'abonné et rend sa réponse : `data(valeur)` en fait le corps ; une erreur qu'il lève part avec son texte, que GFS dit à la personne. Sans `id`, l'appel n'attend pas de
+// réponse (5.1, point 2).
+function deliver(link, id, run, data, what) {
+  const reply = fields => { if (id !== null) post(link, { id, ...fields }); };
   let result;
-  try { result = Promise.resolve(link.openHandler(request.args)); } catch (error) { result = Promise.reject(error); }
-  result.then(opened => reply({ type: 'reponse', data: { ouvert: opened === true } }), (error) => {
-    console.warn('[GfsLink] ouverture demandée par GFS en échec', error);
+  try { result = Promise.resolve(run()); } catch (error) { result = Promise.reject(error); }
+  result.then(value => reply({ type: 'reponse', data: data(value) }), (error) => {
+    console.warn(`[GfsLink] ${what} demandée par GFS en échec`, error);
     reply({ type: 'erreur', message: String((error && error.message) || error || '').slice(0, 200) });
   });
 }
 
-// Un appel de GFS vers l'app : `ouvrir` va à celui qui s'est inscrit (onOpen), dans l'ordre d'arrivée, même avant son inscription ; tout autre nom reçoit `GFS_INCONNU` (5.1, point 3).
+// `ouvrir` (5.4, point 1) : `{ ouvert: true }` quand l'abonné rend vrai, `{ ouvert: false }` sinon (la personne a annulé, ou l'app a dit elle-même pourquoi : GFS n'ajoute rien).
+function deliverOpen(link, request) {
+  deliver(link, request.id, () => link.openHandler(request.args), opened => ({ ouvert: opened === true }), 'ouverture');
+}
+
+// `fermer` (5.4, point 3) : `{ ferme: true }` quand l'abonné rend vrai (l'app a enregistré ou la personne a abandonné), `{ ferme: false }` sinon (la personne a annulé : tout reste en place).
+function deliverClose(link, request) {
+  deliver(link, request.id, () => link.closeHandler({ raison: request.raison }), closed => ({ ferme: closed === true }), 'fermeture');
+}
+
+// Un appel de GFS vers l'app : `ouvrir` va à celui qui s'est inscrit (onOpen), dans l'ordre d'arrivée, même avant son inscription ; `fermer` à celui de onClose, quand il y en a un ; tout autre nom
+// (et `fermer` sans abonné : l'app n'a rien à enregistrer qu'elle sache) reçoit `GFS_INCONNU` (5.1, point 3).
 function receiveCall(link, message) {
   const id = Number.isInteger(message.id) ? message.id : null;
+  if (message.nom === 'fermer' && link.closeHandler) {
+    const raison = isObject(message.args) && typeof message.args.raison === 'string' ? message.args.raison.slice(0, 40) : '';
+    deliverClose(link, { id, raison });
+    return;
+  }
   if (message.nom !== 'ouvrir') {
     if (id !== null) post(link, { type: 'erreur', id, code: 'GFS_INCONNU', message: `Appel inconnu : ${String(message.nom).slice(0, 60)}` });
     return;
@@ -352,6 +372,11 @@ function onOpen(link, fn) {
   return () => { if (link.openHandler === fn) link.openHandler = null; };
 }
 
+function onClose(link, fn) {
+  link.closeHandler = fn;
+  return () => { if (link.closeHandler === fn) link.closeHandler = null; };
+}
+
 function newLink(host) {
   const framed = Boolean(host && host.parent) && host.parent !== host;
   const contract = framed ? hostContract(host.location && host.location.search) : null;
@@ -359,7 +384,7 @@ function newLink(host) {
     host, contract, hosted: contract !== null, known: false, nextId: 1,
     context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, storage: null, extensions: [], libraries: new Map(),
     listeners: { language: new Set(), bar: new Set(), identity: new Set(), ambiance: new Set(), extensions: new Set() },
-    pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [],
+    pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null,
   };
 }
 
@@ -397,6 +422,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     // Un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le fait mourir (contrats 1.3, point 1) : hébergée, l'app l'ouvre dans un nouvel onglet. Seule, faux.
     opensInNewTab: href => link.hosted && /^(?:mailto|tel):/i.test(String(href == null ? '' : href).trim()),
     onOpen: fn => onOpen(link, fn),
+    onClose: fn => onClose(link, fn),
     onLanguage: fn => subscribe(link.listeners.language, fn),
     onBar: fn => subscribe(link.listeners.bar, fn),
     onIdentity: fn => subscribe(link.listeners.identity, fn),

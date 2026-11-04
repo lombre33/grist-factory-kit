@@ -60,6 +60,18 @@ export async function gfsLink(env) {
   check('« ouvrir » arrive à l\'app (l\'identifiant du fichier en texte) et la réponse reprend son id',
     JSON.stringify(replies) === JSON.stringify([{ gfs: 0, id: 41, type: 'reponse', data: { ouvert: true } }]) && now.seen.ouvrir.length === 1 && now.seen.ouvrir[0].fichier.id === '16', { replies, seen: now.seen });
 
+  // `fermer` (5.4 point 3) : sans abonné l'app part comme avant (`GFS_INCONNU`) ; avec `onClose`, la réponse reprend l'id et seul vrai laisse partir l'app.
+  await page.evaluate(() => window.hote.send({ gfs: 0, type: 'appel', id: 42, nom: 'fermer', args: { raison: 'explorateur' } }));
+  const unknown = await until(() => fromApp(page, data => data && data.id === 42).then(found => (found.length ? found : null)));
+  check('« fermer » sans abonné reçoit `GFS_INCONNU`, avec son id', Boolean(unknown) && unknown.length === 1 && unknown[0].type === 'erreur' && unknown[0].code === 'GFS_INCONNU', unknown);
+  await app.evaluate(() => { window.cadre.closing = []; window.cadre.GfsLink.onClose((request) => { window.cadre.closing.push(request); return request.raison !== 'app'; }); });
+  await page.evaluate(() => { window.hote.send({ gfs: 0, type: 'appel', id: 43, nom: 'fermer', args: { raison: 'explorateur' } }); window.hote.send({ gfs: 0, type: 'appel', id: 44, nom: 'fermer', args: { raison: 'app' } }); });
+  const closed = await until(() => fromApp(page, data => data && (data.id === 43 || data.id === 44)).then(found => (found.length >= 2 ? found : null)));
+  const received = await app.evaluate(() => window.cadre.closing);
+  check('« fermer » avec `onClose` : l\'app reçoit la raison, vrai la laisse partir, faux la garde, chaque réponse reprend son id',
+    JSON.stringify(received) === '[{"raison":"explorateur"},{"raison":"app"}]' && Boolean(closed)
+    && JSON.stringify(closed.map(reply => [reply.id, reply.type, reply.data && reply.data.ferme])) === '[[43,"reponse",true],[44,"reponse",false]]', { received, closed });
+
   // Les liens entre apps (5.4) : la demande part dans la forme du contrat, la clé rendue par GFS est lue, l'annulation rend null, un refus de GFS garde son code.
   const calls = name => fromApp(page, data => data && data.type === 'appel' && data.nom === name);
   const later = async (name, count) => until(() => calls(name).then(found => (found.length >= count ? found : null)));

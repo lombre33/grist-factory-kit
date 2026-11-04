@@ -234,6 +234,75 @@ test('`ouvrir` : une ouverture renoncée rend faux, un échec part avec son text
   assert.equal(fake.sent.length, before);
 });
 
+// ---------- `fermer` : GFS va remplacer l'app (contrats de GFS, 5.4 point 3) ----------
+
+const close = (fake, id, args = { raison: 'explorateur' }) => fake.deliver({ gfs: 0, type: 'appel', ...(id === undefined ? {} : { id }), nom: 'fermer', args });
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+test('`fermer` : l\'abonné reçoit la raison ; vrai laisse partir l\'app, faux la garde, et la réponse reprend l\'`id`', async () => {
+  const { fake, link } = await hosted();
+  const asked = [];
+  const answers = [true, false, undefined, 'oui'];
+  link.onClose(request => { asked.push(request); return Promise.resolve(answers.shift()); });
+  [11, 12, 13, 14].forEach(id => close(fake, id));
+  await tick();
+  assert.deepEqual(asked, Array(4).fill({ raison: 'explorateur' }));
+  const replies = fake.sent.map(entry => entry.message).filter(message => [11, 12, 13, 14].includes(message.id));
+  assert.deepEqual(replies.map(reply => [reply.id, reply.type, reply.data.ferme]), [[11, 'reponse', true], [12, 'reponse', false], [13, 'reponse', false], [14, 'reponse', false]],
+    'seul `true` laisse partir l\'app : rien d\'autre ne ferme');
+});
+
+test('`fermer` : une raison qui n\'est pas du texte devient vide, une raison longue est coupée ; une erreur part avec son texte et un appel sans `id` n\'a pas de réponse', async () => {
+  const { fake, link } = await hosted();
+  const asked = [];
+  let fail = false;
+  link.onClose((request) => { asked.push(request.raison); if (fail) throw new Error('Enregistrement refusé'); return true; });
+  close(fake, 20, { raison: 42 });
+  close(fake, 21, { raison: 'x'.repeat(100) });
+  close(fake, 22, null);
+  await tick();
+  assert.deepEqual(asked, ['', 'x'.repeat(40), '']);
+  fail = true;
+  const warnings = await quietly(async () => { close(fake, 23); await tick(); });
+  assert.deepEqual(fake.sent.at(-1).message, { gfs: 0, id: 23, type: 'erreur', message: 'Enregistrement refusé' });
+  assert.match(warnings.join('\n'), /fermeture demandée par GFS en échec/);
+  const before = fake.sent.length;
+  close(fake);
+  await tick();
+  assert.equal(fake.sent.length, before, 'un appel sans `id` n\'attend pas de réponse');
+});
+
+test('`fermer` sans abonné reçoit `GFS_INCONNU` : l\'app part comme avant ; se désabonner y revient', async () => {
+  const { fake, link } = await hosted();
+  close(fake, 30);
+  assert.deepEqual([fake.sent.at(-1).message.type, fake.sent.at(-1).message.code], ['erreur', 'GFS_INCONNU']);
+  const off = link.onClose(() => true);
+  close(fake, 31);
+  await tick();
+  assert.equal(fake.sent.at(-1).message.data.ferme, true);
+  off();
+  close(fake, 32);
+  assert.equal(fake.sent.at(-1).message.code, 'GFS_INCONNU');
+  const second = link.onClose(() => false);
+  const first = link.onClose(() => true);
+  second();
+  close(fake, 33);
+  await tick();
+  assert.equal(fake.sent.at(-1).message.data.ferme, true, 'se désabonner d\'un abonné remplacé ne retire pas le nouveau');
+  first();
+});
+
+test('`fermer` ne vient que du cadre parent : un autre cadre n\'obtient aucun appel d\'abonné', async () => {
+  const { fake, link } = await hosted();
+  let called = 0;
+  link.onClose(() => { called++; return true; });
+  const before = fake.sent.length;
+  fake.deliver({ gfs: 0, type: 'appel', id: 40, nom: 'fermer', args: { raison: 'app' } }, { postMessage() {} });
+  await tick();
+  assert.equal(called, 0);
+  assert.equal(fake.sent.length, before);
+});
+
 test('un appel inconnu de GFS reçoit `GFS_INCONNU`, avec son `id`', async () => {
   const { fake } = await hosted();
   fake.deliver({ gfs: 0, type: 'appel', id: 3, nom: 'effacer' });
