@@ -25,12 +25,18 @@ export function rendreGlissable(element, { id, jours, zone, glisse }) {
   });
 }
 
+// Dit au navigateur qu'un dépôt est possible ici et que c'est un déplacement. L'effet est dit en toutes lettres : laissé au navigateur, il vient du système, et il reste « none » dans un
+// glissement que le système n'a pas ouvert (mesuré sur le banc Firefox de GFS) ; or un dépôt dont l'effet est « none » n'a pas lieu (spécification HTML).
+export function accepterLeDepot(evenement) {
+  evenement.preventDefault();
+  if (evenement.dataTransfer) evenement.dataTransfer.dropEffect = 'move';
+}
+
 // Une zone de sept colonnes qui accepte un dépôt : `survol(jour | null)` pour surligner, `depose(jour)` au dépôt.
 export function accepterDepots(zone, jours, glisse, { survol, depose }) {
   zone.addEventListener('dragover', evenement => {
     if (!glisse.courant) return;
-    evenement.preventDefault();
-    if (evenement.dataTransfer) evenement.dataTransfer.dropEffect = 'move';
+    accepterLeDepot(evenement);
     survol(jourSousLeCurseur(zone, jours, evenement.clientX));
   });
   zone.addEventListener('dragleave', evenement => {

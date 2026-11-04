@@ -2,7 +2,7 @@
 // jour et l'heure (au quart d'heure), clic dans une colonne vide pour ajouter à cette heure.
 import { h } from '../lien-kit.js';
 import { arrondir, blocsDuJour, enHeure, MINUTES_PAR_JOUR } from '../noyau/horaire.js';
-import { rendreGlissable } from './glisser.js';
+import { accepterLeDepot, rendreGlissable } from './glisser.js';
 import { ouvrirSaisie } from './saisie.js';
 
 export const HEURE_AU_DEFILEMENT = 7;
@@ -45,7 +45,7 @@ function construireColonne(ctx, jour) {
   });
   colonne.addEventListener('dragover', glisser => {
     if (!ctx.glisse.courant) return;
-    glisser.preventDefault();
+    accepterLeDepot(glisser);
     colonne.classList.add('cal-survol');
   });
   colonne.addEventListener('dragleave', glisser => { if (!colonne.contains(glisser.relatedTarget)) colonne.classList.remove('cal-survol'); });

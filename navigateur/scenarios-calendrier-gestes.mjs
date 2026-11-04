@@ -2,7 +2,7 @@
 // la saisie rapide, le glisser-déposer (un jour, une heure, le plateau « Sans date »), les refus de l'hôte, la lecture seule, les vues Semaine et Jour, la langue. Le module ne parle pas à
 // Grist : l'hôte est la page navigateur/calendrier.html, qui garde les appels reçus. Portés des essais de Calendar+ (test/navigateur/essais.test.mjs, 31 essais), dont ils gardent le texte :
 // chaque essai y est une vérification du kit, en échec avec le message de la première assertion qui tombe. Ajouts du kit : la casse du titre de la liste d'un jour, l'absence d'erreur de page après
-// Échap (deux essais) et l'essai de la saisie que l'hôte redéfinit en cours de frappe.
+// Échap (deux essais), l'essai de la saisie que l'hôte redéfinit en cours de frappe et celui de l'effet du dépôt que dit la grille horaire.
 import assert from 'node:assert/strict';
 import { check, openPage } from './aide.mjs';
 
@@ -262,6 +262,26 @@ const ESSAIS = [
     await page.waitForFunction(() => kit.appels.some(a => a.nom === 'deplacer'));
     await page.waitForSelector('.cal-colonne[data-jour="2026-11-05"] .cal-bloc[data-id="22"]');
     assert.equal(await page.locator('.cal-colonne[data-jour="2026-11-06"] .cal-bloc').count(), 0);
+  }],
+  ['la grille horaire dit « déplacer » au survol d\'un glissement, comme le mois', async ({ ouvrir }) => {
+    // Un glissement mené à la main, avec un `dataTransfer` qui part de « none » (celui d'un glissement que le système n'a pas ouvert) : seul un gestionnaire qui dit l'effet le fait changer.
+    const survoler = (page, depart, cible) => page.evaluate(([source, but]) => {
+      const dt = { effectAllowed: 'uninitialized', dropEffect: 'none', setData() {} };
+      const envoyer = (element, type) => {
+        const evenement = new DragEvent(type, { bubbles: true, cancelable: true, clientX: 30, clientY: 30 });
+        Object.defineProperty(evenement, 'dataTransfer', { value: dt });
+        element.dispatchEvent(evenement);
+        return evenement;
+      };
+      envoyer(document.querySelector(source), 'dragstart');
+      const survol = envoyer(document.querySelector(but), 'dragover');
+      envoyer(document.querySelector(source), 'dragend');
+      return { empeche: survol.defaultPrevented, effet: dt.dropEffect };
+    }, [depart, cible]);
+    const horaire = await ouvrir({ lignes: HEURES, options: { vue: 'semaine' } });
+    assert.deepEqual(await survoler(horaire, '.cal-bloc[data-id="22"]', '.cal-colonne[data-jour="2026-11-06"]'), { empeche: true, effet: 'move' });
+    const mois = await ouvrir();
+    assert.deepEqual(await survoler(mois, '.cal-evt[data-id="2"]', '.cal-fond[data-jour="2026-11-11"]'), { empeche: true, effet: 'move' });
   }],
   ['une tâche sans date déposée dans la grille reçoit l\'heure déposée et une heure de durée', async ({ ouvrir }) => {
     const page = await ouvrir({ lignes: HEURES, options: { vue: 'semaine' } });
