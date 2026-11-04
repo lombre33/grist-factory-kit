@@ -1,8 +1,8 @@
 # Grist Factory Kit
 
-Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, le lien avec GFS, le widget qui héberge les apps (les liens entre apps, les fichiers qu'il leur passe, les exports qu'il range), et l'ambiance qu'il leur donne. Des modules ES pour le navigateur et trois feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
+Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, le lien avec GFS, le widget qui héberge les apps (les liens entre apps, les fichiers qu'il leur passe, les exports qu'il range), l'ambiance qu'il leur donne, et le calendrier (mois, semaine, jour) qu'une app monte dans sa page. Des modules ES pour le navigateur et quatre feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
 
-Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.7.0** ([CHANGELOG](CHANGELOG.md)).
+Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.8.0** ([CHANGELOG](CHANGELOG.md)).
 
 Le kit est la couche du bas : il n'importe rien (ni app, ni GFS, ni bibliothèque). Une app importe le kit, jamais une autre app ; une extension importe son app et le kit, jamais une autre extension.
 
@@ -12,8 +12,8 @@ Référencer le kit à une étiquette (un commit à part dans l'app, relu) :
 
 ```sh
 git submodule add https://github.com/lombre33/grist-factory-kit.git kit
-git -C kit checkout v0.7.0
-git add kit && git commit -m "Kit v0.7.0"
+git -C kit checkout v0.8.0
+git add kit && git commit -m "Kit v0.8.0"
 ```
 
 Dans la page, les deux feuilles avant celle de l'app :
@@ -138,6 +138,32 @@ const ambiance = createAmbiance({ link: monLien, isDark: () => monThemeEstSombre
 
 `createAmbiance({ link, isDark, doc, win })` demande `link` et `isDark` (une erreur sinon) ; `doc` et `win` sont la page, pour un essai.
 
+## Le calendrier
+
+Un calendrier que Tuesday et Calendar+ montent chacun chez eux : un mois, une semaine ou un jour, des événements qui s'étendent sur plusieurs jours ou ont une heure, le glisser-déposer pour changer le jour ou l'heure, un plateau « Sans date », une saisie rapide du titre. Écrit dans le dépôt de Calendar+ (`grist-widget-calendar-plus`), rangé ici par GFS : une app qui n'en veut pas ne le charge pas, et rien d'autre dans `js/` ne l'importe.
+
+```html
+<link rel="stylesheet" href="kit/css/tokens.css">
+<link rel="stylesheet" href="kit/css/calendrier.css">   <!-- après tokens.css -->
+```
+
+```js
+import { creerCalendrier } from './kit/js/calendrier/index.js';
+
+const calendrier = creerCalendrier({ onOuvrir, onDeplacer, onAjouter, onEtat });
+conteneur.append(calendrier.element);        // le module rend son élément, l'hôte le pose (le cadre donne la hauteur : l'élément remplit son parent)
+calendrier.definir({ lignes, options });     // à rappeler à chaque changement de données
+```
+
+`creerCalendrier(rappels)` rend `{ element, definir({ lignes, options }), aller(jour), aujourdhui(), detruire() }`.
+
+- **Les lignes** : `{ id, titre, debut, fin, avecHeure, statut, couleur, responsables, modifiable }`. `debut` et `fin` sont des **jours civils en texte**, `AAAA-MM-JJ` ou `AAAA-MM-JJTHH:mm`, **sans fuseau** (l'hôte convertit les secondes de Grist) ; `fin` est inclusive pour un jour sans heure ; un début seul ou une fin seule est un événement d'un jour ; ni l'un ni l'autre : le plateau « Sans date ». Une date illisible ou une fin avant le début n'est jamais réparée en silence : la ligne est écartée et un avis le dit. `couleur` est `{ fond, texte }` tels que Grist les donne (une donnée de la personne, posée par le CSSOM : `--cal-fond` et `--cal-texte`) ; absente, un jeton du kit. `modifiable: false` grise le glisser, avec sa raison.
+- **Les options** : `debutSemaine` (1 = lundi, par défaut), `vue` (`mois`, `semaine` ou `jour`), `jourCourant`, `langue` (`fr` ou `en`, celle que l'hôte affiche : le module n'a pas de réglage de langue à lui), `maintenant` (une horloge injectée), `lectureSeule`, `maxPistes`. Une vue ou un jour demandés ne comptent qu'à la première fois et quand la demande change : le calendrier s'ouvre sur aujourd'hui, jamais sur la date de la première ligne.
+- **Les rappels** : `onOuvrir(id)` ; `onDeplacer({ id, debut, fin })` rend une promesse (refusée, ou `false` : l'événement **revient à sa place**) ; `onAjouter({ debut, titre })` rend une promesse (refusée, le champ garde son titre) ; `onEtat({ vue, jourCourant })`, pour que l'hôte retienne la vue. Un rappel absent grise le geste (pas de `onDeplacer` : lecture seule).
+- **Le module ne parle jamais à Grist**, ni à la fenêtre : l'hôte écrit, et garde Annuler / Rétablir. Il ne prend au kit que `h` et `createI18n` (`js/calendrier/lien-kit.js`).
+- **Les événements qui glissent sont des `<div role="button" draggable="true">`**, jamais des `<button>` : un `<button draggable>` ne glisse pas sous Firefox avant la 147.
+- **La feuille** ne porte que des jetons (couleurs, formes avec leur valeur d'origine en repli, `--z-menu`) : l'ambiance de GFS la suit, en clair et en sombre.
+
 ## Ce que contient le kit
 
 | Fichier | Ce qu'il donne |
@@ -159,6 +185,9 @@ const ambiance = createAmbiance({ link: monLien, isDark: () => monThemeEstSombre
 | `js/ambiance.js` | `Ambiance.start()` : pose l'ambiance de GFS sur la page de l'app et la suit, avec le lien et le thème du kit (ci-dessus). |
 | `js/ambiance-pose.js` | `createAmbiance({ link, isDark })` : la même pose avec le lien et le mode qu'on lui donne (une app qui a son propre lien avec GFS) ; `paintAmbiance` pour un essai. N'importe ni le lien ni le thème du kit. |
 | `js/ambiance-message.js` | `normalizeAmbiance(message)` : le message d'ambiance lu avec méfiance ; `COLOR_TOKENS` et `SHAPE_TOKENS` : les jetons que l'app connaît. |
+| `css/calendrier.css` | La feuille du calendrier : des jetons seulement, aucune couleur ni `z-index` en dur. À charger après `tokens.css`. |
+| `js/calendrier/index.js` | `creerCalendrier(rappels)` : le calendrier (ci-dessus). Son noyau (`noyau/` : dates civiles, événements, placement des barres, blocs horaires, déplacement) ne connaît ni le DOM ni Grist ; ses vues sont dans `vue/`, ses textes dans `textes.js`. |
+| `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
 
@@ -182,14 +211,15 @@ Prévu au plan de GFS (cahier, 4.5), pas encore dans le kit, parce que le premie
 ## Contrôles
 
 ```sh
-npm test                    # 101 essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, ambiance, hygiène du code
+npm test                    # 187 essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, ambiance, calendrier, hygiène du code
+npm run test:fuseaux        # les essais du calendrier sous trois fuseaux (Paris, Los Angeles, Auckland) : un changement d'heure ne décale jamais un jour
 npm run test:navigateur     # Chromium (Playwright), 700 × 400, souris et clavier, clair et sombre, français et anglais
-KIT_ONLY=couleur npm run test:navigateur   # seulement les essais dont le nom contient « couleur »
+KIT_ONLY=couleur npm run test:navigateur   # seulement les essais dont le nom contient « couleur » (ou « calendrier »)
 ```
 
-Les essais du navigateur ouvrent `navigateur/page.html`, pour le sélecteur de couleur `navigateur/couleur.html`, et pour le lien avec GFS `navigateur/gfs-hote.html` (le cadre de l'app isolé comme chez GFS), sous la politique de sécurité d'une app hébergée et rangent leurs captures dans `navigateur/captures/` (ou `KIT_CAPTURES`). Playwright est celui du dossier du dépôt (`npm i -D playwright`) ou, à défaut, celui du conteneur du cloud.
+Les essais du navigateur ouvrent `navigateur/page.html`, pour le sélecteur de couleur `navigateur/couleur.html`, pour le calendrier `navigateur/calendrier.html` et pour le lien avec GFS `navigateur/gfs-hote.html` (le cadre de l'app isolé comme chez GFS), sous la politique de sécurité d'une app hébergée et rangent leurs captures dans `navigateur/captures/` (ou `KIT_CAPTURES`). Playwright est celui du dossier du dépôt (`npm i -D playwright`) ou, à défaut, celui du conteneur du cloud.
 
-Le kit passe l'outil d'audit des widgets (`gwaudit`) sur ses seuils de code : 600 lignes de code par fichier au plus, moins de 81 lignes par fonction, complexité 15 au plus.
+Le kit tient les seuils de code de l'outil d'audit des widgets (`gwaudit`) : 600 lignes de code par fichier au plus, moins de 81 lignes par fonction, complexité 15 au plus. L'outil juge la surface qu'exécute `navigateur/page.html` ; pour le reste de `js/` (le calendrier, par exemple), la mesure par fonction de l'outil (`src/moteur/fonctions.js`) est passée sur tout `js/` : 496 fonctions, aucune au-dessus des seuils.
 
 ## Licence
 
