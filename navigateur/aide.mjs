@@ -82,3 +82,29 @@ export const dialogButtons = page => page.$$eval('#pp-dialog-modal .pp-modal-act
 export const paint = (page, selector) => page.$eval(selector, el => { const s = getComputedStyle(el); return { color: s.color, background: s.backgroundColor }; });
 // « rgb(47, 111, 237) » ou « rgba(15, 23, 42, 0.45) » en nombres.
 export const numbers = text => (text.match(/[\d.]+/g) || []).map(Number);
+
+// Les textes visibles qui répondent à `selectors`, chacun avec sa couleur et le fond que l'œil voit derrière lui : les fonds de tout ce qui est empilé à cet endroit, du dessous au dessus (un fond
+// peut être un autre élément que le parent : la cellule d'un jour sous son numéro). Un texte hors de l'écran ou recouvert n'est pas lu. Rend { selector, text, color, background } en [r, g, b],
+// à donner à ratio() de test/jetons.mjs.
+export function visibleTexts(page, selectors) {
+  return page.evaluate(list => {
+    const parse = text => { const n = (text.match(/[\d.]+/g) || []).map(Number); return { r: n[0], g: n[1], b: n[2], a: n.length > 3 ? n[3] : 1 }; };
+    const over = (top, under) => ({ r: top.r * top.a + under.r * (1 - top.a), g: top.g * top.a + under.g * (1 - top.a), b: top.b * top.a + under.b * (1 - top.a), a: 1 });
+    const out = [];
+    for (const selector of list) {
+      for (const el of document.querySelectorAll(selector)) {
+        const box = el.getBoundingClientRect();
+        const text = (el.value || el.textContent).trim();
+        if (!text || !box.width || !box.height) continue;
+        const stack = document.elementsFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        const at = stack.findIndex(node => el.contains(node));
+        if (at === -1) continue;
+        let background = { r: 255, g: 255, b: 255, a: 1 };
+        for (const node of stack.slice(at).reverse()) background = over(parse(getComputedStyle(node).backgroundColor), background);
+        const color = over(parse(getComputedStyle(el).color), background);
+        out.push({ selector, text: text.slice(0, 24), color: [color.r, color.g, color.b].map(Math.round), background: [background.r, background.g, background.b].map(Math.round) });
+      }
+    }
+    return out;
+  }, selectors);
+}

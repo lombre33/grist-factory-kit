@@ -1,0 +1,3 @@
+/* La page d'essai du calendrier : le cadre de l'app au format du panneau de Grist, fond de la page par les jetons du kit. */
+html, body { margin: 0; height: 100%; background: var(--bg); }
+#cadre { width: 700px; height: 400px; }

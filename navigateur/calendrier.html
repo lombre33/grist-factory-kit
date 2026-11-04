@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Kit : calendrier</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- La politique de sécurité d'une app hébergée par GFS : rien d'en ligne, rien d'extérieur. Le calendrier pose les couleurs de Grist par le CSSOM : si l'une passait par un attribut style,
+     cette page casserait. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="../css/tokens.css">
+<link rel="stylesheet" href="../css/calendrier.css">
+<link rel="stylesheet" href="calendrier.css">
+<script type="module" src="calendrier.js"></script>
+</head>
+<body>
+<div id="cadre"></div>
+</body>
+</html>

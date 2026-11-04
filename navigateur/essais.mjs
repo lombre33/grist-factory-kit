@@ -8,6 +8,8 @@ import { themeSources, themeKept, storageRefused, language, loadedTwice } from '
 import { dialogs, ownWindow, layers } from './scenarios-fenetres.mjs';
 import { gfsLink } from './scenarios-gfs.mjs';
 import { colorPalette, colorDialog } from './scenarios-couleur.mjs';
+import { gestes } from './scenarios-calendrier-gestes.mjs';
+import { rendu } from './scenarios-calendrier-rendu.mjs';
 
 const shots = process.env.KIT_CAPTURES || join(ROOT, 'navigateur', 'captures');
 await mkdir(shots, { recursive: true });
@@ -31,11 +33,13 @@ await run('stockage refusé', () => storageRefused(env));
 await run('langue', () => language(env));
 await run('double chargement', () => loadedTwice(env));
 await run('lien avec GFS, dans un cadre isolé', () => gfsLink(env));
+await run('calendrier : gestes', () => gestes(env));
 for (const system of ['light', 'dark']) {
   for (const locale of ['fr-FR', 'en-US']) {
     await run(`saisies et confirmations (${system}, ${locale})`, () => dialogs(env, system, locale));
     await run(`menu de couleur (${system}, ${locale})`, () => colorPalette(env, system, locale));
     await run(`fenêtre de couleur (${system}, ${locale})`, () => colorDialog(env, system, locale));
+    await run(`calendrier : rendu (${system}, ${locale})`, () => rendu(env, system, locale));
   }
   await run(`fenêtre libre (${system})`, () => ownWindow(env, system));
   await run(`couches (${system})`, () => layers(env, system));

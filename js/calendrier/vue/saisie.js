@@ -10,7 +10,9 @@ export function ouvrirSaisie(ctx, { jour, cellule, debut = jour, decalage }) {
   let envoi = false;
   const champ = h('input', { type: 'text', class: 'cal-saisie-champ', 'aria-label': ctx.t('cal.ajouterAria', { jour: libelleJour(jour, ctx.langue) }), placeholder: ctx.t('cal.ajouterChamp'), title: ctx.t('cal.ajouterAide'), maxlength: '200', autocomplete: 'off' });
   const boite = h('div', { class: 'cal-saisie', dataset: { jour } }, champ);
-  const fermer = () => { if (boite.isConnected) boite.remove(); };
+  // Chrome envoie `blur` pendant le retrait d'un champ qui a le focus : sans garde, `fermer` s'y rappellerait et le retrait en cours lèverait « The node to be removed is no longer a child ».
+  let fermee = false;
+  const fermer = () => { if (fermee) return; fermee = true; boite.remove(); };
   const valider = async () => {
     const titre = champ.value.trim();
     if (!titre || envoi) return;
@@ -29,7 +31,7 @@ export function ouvrirSaisie(ctx, { jour, cellule, debut = jour, decalage }) {
     if (touche.key === 'Enter') { touche.preventDefault(); valider(); }
     else if (touche.key === 'Escape') { touche.stopPropagation(); fermer(); }
   });
-  champ.addEventListener('blur', () => { if (!envoi) fermer(); });
+  champ.addEventListener('blur', () => { if (!envoi) queueMicrotask(fermer); });
   poserPres(boite, couche, cellule, { decalage: decalage === undefined ? Math.max(0, cellule.getBoundingClientRect().height - 32) : decalage, largeurMin: 150 });
   champ.focus();
 }

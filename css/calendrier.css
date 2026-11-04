@@ -68,7 +68,7 @@
 .cal-saisie-champ { width: 100%; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius-xs, 4px); padding: 3px 6px; box-shadow: var(--shadow-float); }
 .cal-saisie-champ[aria-invalid="true"] { border-color: var(--danger); }
 .cal-liste { position: absolute; left: var(--cal-x); top: var(--cal-y); width: 240px; max-width: calc(100% - 8px); max-height: 90%; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 7px); box-shadow: var(--shadow-float); }
-.cal-liste-titre { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 650; text-transform: capitalize; }
+.cal-liste-titre { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); font-weight: 650; }
 .cal-liste-fermer { font: inherit; font-size: 16px; line-height: 1; color: var(--text-muted); background: none; border: 0; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-xs, 4px); }
 .cal-liste-fermer:hover { background: var(--surface-sunken); }
 .cal-liste-corps { overflow: auto; padding: 4px; }
