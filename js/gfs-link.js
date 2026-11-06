@@ -16,6 +16,7 @@
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
 //   GfsLink.openFile({ app, id, type })          // GFS ouvre ce fichier dans son app : { ouvert } ; dans une autre app que celle-ci, elle prend la place de celle-ci (5.4, point 7)
 //   GfsLink.deposit({ fichier, nom, type?, lot?, suivants?, dossier? })   // GFS garde ce fichier que l'app vient de fabriquer (un export en PDF) : { statut, id, nom } (5.4, point 9)
+//   GfsLink.attach({ table, colonne, mode?, fichiers: [{ ligne, fichier, nom }] })   // GFS joint ces PDF que l'app vient de fabriquer à la cellule « Pièces jointes » de leur ligne : { colonne, probleme, joints, echecs } (5.4, point 12)
 //   GfsLink.onDelete(fn), GfsLink.onDuplicate(fn)   // GFS met à la corbeille ou copie un fichier de l'app qui tient à plus qu'une ligne (un formulaire : sa section, sa table, son lien) : fn({ fichier, raison | nom }) rend { fait, dit? } | { id, nom?, dit? } (5.4, points 10 et 11)
 //   GfsLink.onClose(fn)                          // GFS va remplacer l'app par une autre (fenêtre des apps, fichier d'une autre app, lien) : fn({ raison }) enregistre ce qui attend ou pose sa question (Enregistrer, Abandonner, Annuler), puis rend vrai si l'app peut partir, faux si la personne reste (5.4, point 3)
 // `choose` et `openFile` sont les liens entre apps : l'app garde la clé { app, id, type } que `choose` rend (le nom n'est qu'une étiquette) et la rend à `openFile` ; un fichier disparu rejette `openFile`
@@ -25,6 +26,10 @@
 // que GFS a donné) ou `ignore` (la personne n'en veut pas : `id` et `nom` sont null). Les fichiers d'un même export en lot portent le même `lot` et, pour chacun, le nombre de `suivants` à ranger encore (0
 // pour le dernier) : la personne peut alors répondre une fois pour tous. GFS ne dit rien par-dessus l'app : un refus rejette avec son `code` (`GFS_REFUSE`, `GFS_ACCES`, `GFS_LECTURE_SEULE`, `GFS_ANNULE`,
 // `GFS_ECHEC`, `GFS_INACTIF`, ou `GFS_INCONNU` d'un GFS qui ne sait pas encore ranger) et sa phrase, que l'app écrit dans son coin d'état. Chaque appel est un fichier de plus : GFS les prend l'un après l'autre.
+// `attach` est la jointure d'un PDF à la ligne d'où il vient (l'export d'une ligne de Publipostage+) : l'app donne les octets (des `File` ou des `Blob`), le numéro de la ligne et un nom, jamais un jeton d'écriture ; GFS seul
+// envoie les fichiers à Grist, relit la colonne juste avant d'écrire et écrit un seul lot. `mode` vaut `remplacer` (par défaut : un fichier de même nom sort de la cellule) ou `ajouter`. La réponse dit ce qui s'est passé,
+// sans rien rejeter : `probleme` est null, ou ce qui a arrêté le lot (`absente`, `inutilisable`, `refus`, `trop-gros`, `injoignable`, `echec`) ; `joints` : [{ index, remplace }] ; `echecs` : [{ index, raison }] (`index` : la place
+// du fichier dans `fichiers`). Un refus de la demande elle-même rejette avec son `code` (`GFS_REFUSE`, `GFS_LECTURE_SEULE`, `GFS_INACTIF`, ou `GFS_INCONNU` d'un GFS qui ne sait pas encore joindre) et sa phrase.
 // `onClose` est la réponse à l'appel `fermer` : GFS ne détruit le cadre de l'app qu'après `{ ferme: true }`. L'abonné rend (ou résout) exactement `true` pour laisser partir l'app, après avoir enregistré
 // ce qui attend (enregistrement automatique allumé : sans question) ou après la question de l'app ; tout autre retour est `{ ferme: false }` (la personne a annulé : tout reste en place) ; une erreur qu'il lève part avec
 // son texte et GFS demande à la personne. Sans abonné, l'app répond `GFS_INCONNU` et part comme avant ; sans réponse au bout de 10 secondes, GFS demande à la personne s'il doit fermer quand même.
@@ -413,6 +418,32 @@ function deposit(link, request) {
   return call(link, 'ranger', args).then(normalizeDeposit);
 }
 
+// `joindre` rend { colonne, probleme, joints, echecs } (5.4, point 12). Un mot d'un GFS plus récent que ce kit est rendu tel quel : l'app l'ignore plutôt que de le prendre pour un autre.
+function normalizeAttach(raw) {
+  const data = isObject(raw) ? raw : {};
+  const entries = value => (Array.isArray(value) ? value : []).filter(each => isObject(each) && Number.isInteger(each.index));
+  return {
+    colonne: text(data.colonne),
+    probleme: typeof data.probleme === 'string' && data.probleme !== '' ? data.probleme : null,
+    joints: entries(data.joints).map(each => ({ index: each.index, remplace: each.remplace === true })),
+    echecs: entries(data.echecs).map(each => ({ index: each.index, raison: text(each.raison) })),
+  };
+}
+
+// Demande à GFS de joindre des fichiers à la cellule « Pièces jointes » de leur ligne (5.4, point 12) : `table` et `colonne` (identifiants de Grist) et `fichiers` (une liste de { ligne (un entier d'au moins 1),
+// fichier (un `File` ou un `Blob`), nom }) sont attendus, `mode` suit tel quel ; GFS en vérifie les limites (`GFS_REFUSE`, avec sa phrase). Pas de délai : GFS envoie les fichiers un à un. Rend { colonne, probleme, joints, echecs }.
+function attach(link, request) {
+  if (!link.hosted) return Promise.reject(new Error('GFS absent'));
+  const asked = isObject(request) ? request : {};
+  const entries = Array.isArray(asked.fichiers) ? asked.fichiers : [];
+  const valid = entry => isObject(entry) && Number.isInteger(entry.ligne) && entry.ligne >= 1 && isBlob(entry.fichier) && typeof entry.nom === 'string' && entry.nom.trim() !== '';
+  const named = key => typeof asked[key] === 'string' && asked[key].trim() !== '';
+  if (!named('table') || !named('colonne') || entries.length === 0 || !entries.every(valid)) return failure('attach : { table, colonne, fichiers: [{ ligne, fichier (un File ou un Blob), nom }] } est attendu', 'GFS_REFUSE');
+  const args = { table: asked.table, colonne: asked.colonne, fichiers: entries.map(({ ligne, fichier, nom }) => ({ ligne, fichier, nom })) };
+  if (asked.mode !== undefined) args.mode = asked.mode;
+  return call(link, 'joindre', args).then(normalizeAttach);
+}
+
 function onOpen(link, fn) {
   link.openHandler = fn;
   for (const request of link.earlyOpens.splice(0)) deliverOpen(link, request);
@@ -467,6 +498,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     choose: request => choose(link, request),
     openFile: target => openFile(link, target),
     deposit: request => deposit(link, request),
+    attach: request => attach(link, request),
     // Un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le fait mourir (contrats 1.3, point 1) : hébergée, l'app l'ouvre dans un nouvel onglet. Seule, faux.
     opensInNewTab: href => link.hosted && /^(?:mailto|tel):/i.test(String(href == null ? '' : href).trim()),
     onOpen: fn => onOpen(link, fn),

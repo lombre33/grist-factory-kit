@@ -387,6 +387,7 @@ test('seule : choose, openFile et deposit refusent sans rien envoyer', async () 
   await assert.rejects(link.choose({ types: ['document'] }), /GFS absent/);
   await assert.rejects(link.openFile({ app: 'a', id: '1', type: 't' }), /GFS absent/);
   await assert.rejects(link.deposit({ fichier: new File(['%PDF'], 'a.pdf'), nom: 'a.pdf' }), /GFS absent/);
+  await assert.rejects(link.attach({ table: 'Clients', colonne: 'Pdf', fichiers: [{ ligne: 1, fichier: new File(['%PDF'], 'a.pdf'), nom: 'a.pdf' }] }), /GFS absent/);
   assert.equal(fake.sent.length, 0);
 });
 
@@ -465,6 +466,69 @@ test('deposit : une demande hors règle ne part pas (GFS_REFUSE) — pas de fich
     { fichier: PDF() }, { fichier: PDF(), nom: '  ' }, { fichier: PDF(), nom: 4 }];
   for (const request of bad) await assert.rejects(link.deposit(request), error => error.code === 'GFS_REFUSE');
   assert.equal(fake.sent.length, before);
+});
+
+// La jointure d'un PDF à la cellule de sa ligne (5.4, point 12).
+const ATTACH = (over = {}) => ({ table: 'Clients', colonne: 'Pdf', fichiers: [{ ligne: 3, fichier: PDF(), nom: 'Facture.pdf' }, { ligne: 3, fichier: PDF(), nom: 'Devis.pdf' }], ...over });
+
+test('attach : la demande part telle qu\'elle est écrite — table, colonne, mode, et pour chaque fichier la ligne, les octets et le nom —, la réponse est { colonne, probleme, joints, echecs }', async () => {
+  const { fake, link } = await hosted();
+  const attached = link.attach(ATTACH({ mode: 'ajouter', inconnu: 'pas envoyé' }));
+  assert.equal(fake.calls('joindre').length, 1);
+  const { args } = fake.calls('joindre')[0];
+  assert.deepEqual(Object.keys(args).sort(), ['colonne', 'fichiers', 'mode', 'table']);
+  assert.deepEqual([args.table, args.colonne, args.mode], ['Clients', 'Pdf', 'ajouter']);
+  assert.deepEqual(args.fichiers.map(each => [each.ligne, each.nom, Object.keys(each).sort().join()]), [[3, 'Facture.pdf', 'fichier,ligne,nom'], [3, 'Devis.pdf', 'fichier,ligne,nom']]);
+  assert.equal(await args.fichiers[0].fichier.text(), '%PDF-1.4 export');
+  fake.replyTo('joindre', { colonne: 'Pdf', probleme: null, joints: [{ index: 0, remplace: true, inconnu: 1 }, { index: 1 }], echecs: [], inconnu: 'pas gardé' });
+  assert.deepEqual(await attached, { colonne: 'Pdf', probleme: null, joints: [{ index: 0, remplace: true }, { index: 1, remplace: false }], echecs: [] });
+});
+
+test('attach : « mode » ne part pas quand il n\'est pas donné ; un mot de problème d\'un GFS plus récent est rendu tel quel ; une réponse vide ne dit rien', async () => {
+  const { fake, link } = await hosted();
+  const first = link.attach(ATTACH());
+  assert.equal('mode' in fake.calls('joindre')[0].args, false);
+  fake.replyTo('joindre', { colonne: 'Pdf', probleme: 'quota', joints: [], echecs: [{ index: 0, raison: 'quota' }, { index: 'x', raison: 'ignoré' }, 'pas un objet'] });
+  assert.deepEqual(await first, { colonne: 'Pdf', probleme: 'quota', joints: [], echecs: [{ index: 0, raison: 'quota' }] });
+  const empty = link.attach(ATTACH());
+  fake.replyTo('joindre', undefined);
+  assert.deepEqual(await empty, { colonne: '', probleme: null, joints: [], echecs: [] });
+});
+
+test('attach : un refus de GFS garde son code et sa phrase — dont GFS_INCONNU, d\'un GFS qui ne sait pas encore joindre — et la demande suivante part quand même', async () => {
+  const { fake, link } = await hosted();
+  for (const code of ['GFS_REFUSE', 'GFS_LECTURE_SEULE', 'GFS_INACTIF', 'GFS_INCONNU']) {
+    const request = link.attach(ATTACH());
+    fake.deliver({ gfs: 0, type: 'erreur', id: fake.calls('joindre').at(-1).id, code, message: `dit ${code}` });
+    await assert.rejects(request, error => error.code === code && error.message === `dit ${code}`);
+  }
+  assert.equal(fake.calls('joindre').length, 4);
+});
+
+test('attach : une demande hors règle ne part pas (GFS_REFUSE) — ni table ni colonne, pas de fichier, une ligne qui n\'est pas un numéro, des octets sans File, pas de nom', async () => {
+  const { fake, link } = await hosted();
+  const before = fake.sent.length;
+  const file = (over = {}) => ({ ligne: 1, fichier: PDF(), nom: 'A.pdf', ...over });
+  const bad = [undefined, null, 'Clients', {}, ATTACH({ table: '' }), ATTACH({ table: 4 }), ATTACH({ colonne: ' ' }), ATTACH({ colonne: undefined }), ATTACH({ fichiers: [] }), ATTACH({ fichiers: undefined }), ATTACH({ fichiers: file() }),
+    ATTACH({ fichiers: [file({ ligne: 0 })] }), ATTACH({ fichiers: [file({ ligne: 1.5 })] }), ATTACH({ fichiers: [file({ ligne: '3' })] }), ATTACH({ fichiers: [file({ fichier: '%PDF-1.4' })] }), ATTACH({ fichiers: [file({ fichier: new Uint8Array([37]) })] }),
+    ATTACH({ fichiers: [file({ nom: '  ' })] }), ATTACH({ fichiers: [file({ nom: undefined })] }), ATTACH({ fichiers: [file(), null] })];
+  for (const request of bad) await assert.rejects(link.attach(request), error => error.code === 'GFS_REFUSE');
+  assert.equal(fake.sent.length, before);
+});
+
+test('attach : deux demandes sont deux appels, chacun sa réponse, et GFS prend tout son temps : aucun délai', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 20 });
+  fake.replyTo('contexte', structuredClone(CONTEXT));
+  await link.ready;
+  const first = link.attach(ATTACH());
+  const second = link.attach(ATTACH());
+  const [one, two] = fake.calls('joindre');
+  assert.notEqual(one.id, two.id);
+  await new Promise(resolve => setTimeout(resolve, 90));
+  fake.deliver({ gfs: 0, type: 'reponse', id: two.id, data: { colonne: 'Pdf', probleme: 'refus', joints: [], echecs: [{ index: 0, raison: 'refus' }] } });
+  fake.deliver({ gfs: 0, type: 'reponse', id: one.id, data: { colonne: 'Pdf', probleme: null, joints: [{ index: 0, remplace: false }], echecs: [] } });
+  assert.deepEqual([(await first).probleme, (await second).probleme], [null, 'refus']);
 });
 
 test('l\'ouverture garde le fichier que GFS passe — `lecture` { id (texte), fichier } du contexte, `importation` { valeur, fichier } de l\'appel `ouvrir` — tel quel, sans clé de plus quand il n\'y en a pas', async () => {

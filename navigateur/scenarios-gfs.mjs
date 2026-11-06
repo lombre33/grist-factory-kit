@@ -165,6 +165,19 @@ async function files(page, app) {
   const refused = await app.evaluate(() => window.cadre.link);
   check('un refus de GFS garde son code et sa phrase ; sans lot ni dossier, rien de plus ne part', refused === 'GFS_ANNULE : Tu as refusé de créer la table des fichiers.'
     && JSON.stringify(Object.keys(second[1].args).sort()) === JSON.stringify(['fichier', 'nom']), { refused, second });
+
+  await app.evaluate(() => {
+    const pdf = name => new File(['%PDF-1.4 joint'], name, { type: 'application/pdf' });
+    window.cadre.link = window.cadre.GfsLink.attach({ table: 'Clients', colonne: 'Pdf', mode: 'ajouter', fichiers: [{ ligne: 3, fichier: pdf('Facture.pdf'), nom: 'Facture' }, { ligne: 4, fichier: pdf('Devis.pdf'), nom: 'Devis.pdf' }] });
+  });
+  const attached = await later('joindre', 1);
+  await answer(attached[0].id, { type: 'reponse', data: { colonne: 'Pdf', probleme: null, joints: [{ index: 0, remplace: false }, { index: 1, remplace: true }], echecs: [], inconnu: 'pas gardé' } });
+  const report = await app.evaluate(() => window.cadre.link);
+  const sent = attached[0].args;
+  check('« joindre » part avec les File fabriqués dans le cadre isolé (ligne, nom, type, octets), la table, la colonne et le mode ; la réponse de GFS est lue : { colonne, probleme, joints, echecs }',
+    attached.length === 1 && JSON.stringify([sent.table, sent.colonne, sent.mode]) === JSON.stringify(['Clients', 'Pdf', 'ajouter'])
+    && JSON.stringify(sent.fichiers) === JSON.stringify([{ ligne: 3, fichier: { blob: true, fichier: true, nom: 'Facture.pdf', taille: 14, type: 'application/pdf', debut: '%PDF-1.4 joi' }, nom: 'Facture' }, { ligne: 4, fichier: { blob: true, fichier: true, nom: 'Devis.pdf', taille: 14, type: 'application/pdf', debut: '%PDF-1.4 joi' }, nom: 'Devis.pdf' }])
+    && JSON.stringify(report) === JSON.stringify({ colonne: 'Pdf', probleme: null, joints: [{ index: 0, remplace: false }, { index: 1, remplace: true }], echecs: [] }), { attached, report });
 }
 
 // L'ambiance de GFS (5.2, point 10) : GFS la donne par l'événement `ambiance` (ici un vrai message, test/ambiance-exemple.json) ; l'app la pose par le CSSOM, la politique `style-src 'self'` de sa page ne laissant

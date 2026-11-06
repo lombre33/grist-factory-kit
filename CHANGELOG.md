@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.11.0 : joindre un PDF à la ligne d'où il vient (06/11/2026)
+
+L'export d'une ligne de Publipostage+ (un PDF par ligne) doit pouvoir entrer dans la cellule « Pièces jointes » de cette ligne (contrats de GFS, 5.4 point 12). Dans GFS l'app n'a pas de jeton d'écriture : elle donne les octets, GFS joint.
+
+- **`GfsLink.attach({ table, colonne, mode?, fichiers: [{ ligne, fichier, nom }] })`** : rend `{ colonne, probleme, joints, echecs }`. `fichier` est un `File` ou un `Blob` (les octets partent dans le message, aucun jeton) ; `ligne` un entier d'au moins 1 ; `nom` le nom que Grist garde. `mode` vaut `remplacer` (par défaut, un fichier de même nom sort de la cellule) ou `ajouter`. `probleme` vaut `null` ou `absente`, `inutilisable`, `refus`, `trop-gros`, `injoignable`, `echec` (un mot d'un GFS plus récent est rendu tel quel) ; `joints` : `[{ index, remplace }]` ; `echecs` : `[{ index, raison }]`.
+- **Ce que le kit refuse lui-même** (`GFS_REFUSE`, rien ne part) : pas de table ni de colonne, pas de fichier, une ligne qui n'est pas un entier d'au moins 1, des octets qui ne sont pas un `File` ou un `Blob`, un nom vide. Les autres refus viennent de GFS avec leur `code` (`GFS_REFUSE`, `GFS_LECTURE_SEULE`, `GFS_INACTIF`, `GFS_INCONNU` d'un GFS qui ne sait pas encore joindre). Seule, `attach` rejette (`GFS absent`).
+- **Pas de délai, pas de partage** : chaque appel est une demande de plus, GFS les prend l'une après l'autre.
+- **Essais** : 200 sous Node (5 de plus, qui échouent sur l'ancien code : la demande telle qu'elle est écrite et la réponse, `mode` absent et un mot inconnu, les refus de GFS avec leur code, les demandes hors règle, deux appels sans délai ; plus `attach` seule) ; 692 dans un vrai Chromium (un `File` fabriqué dans le cadre isolé part avec ses octets, dans la liste `fichiers`). Rejoué dans un vrai Grist 1.7.19 avec GFS le 06/11 : voir `docs/faits-verifies.md` de GFS, section 48 (sonde sans le kit) et la section suivante (sonde avec le kit).
+
 ## 0.10.0 : répondre à « Mettre à la corbeille » et « Dupliquer » (06/11/2026)
 
 GFS appelle `supprimer` et `dupliquer` sur l'app active pour un fichier qui tient à plus qu'une ligne (un formulaire de Form+ : sa ligne, sa section, sa table de réponses, son lien public ; contrats de GFS, 5.4 points 10 et 11). Le client du kit répondait `GFS_INCONNU` à ces deux appels, comme à `fermer` avant la 0.9.0 : une app qui passe par le kit ne pouvait ni fermer son lien avant la corbeille ni copier son fichier en entier. Choix du porteur (06/11, carte « Un crochet par geste »).
