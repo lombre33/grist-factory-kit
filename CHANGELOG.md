@@ -2,6 +2,16 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.10.0 : répondre à « Mettre à la corbeille » et « Dupliquer » (06/11/2026)
+
+GFS appelle `supprimer` et `dupliquer` sur l'app active pour un fichier qui tient à plus qu'une ligne (un formulaire de Form+ : sa ligne, sa section, sa table de réponses, son lien public ; contrats de GFS, 5.4 points 10 et 11). Le client du kit répondait `GFS_INCONNU` à ces deux appels, comme à `fermer` avant la 0.9.0 : une app qui passe par le kit ne pouvait ni fermer son lien avant la corbeille ni copier son fichier en entier. Choix du porteur (06/11, carte « Un crochet par geste »).
+
+- **`GfsLink.onDelete(fn)`** : `fn({ fichier: { id, type }, raison })` s'exécute quand la personne met un fichier de l'app à la corbeille (`raison` vaut `corbeille`, 40 signes au plus). `fn` ferme ce qui est public, puis rend `{ fait: true }` ; `{ fait: false, dit }` quand elle ne peut pas (`dit` : une phrase, 200 signes au plus, que GFS ajoute à la sienne) ; rendre seulement `true` ou `false` suffit. Seul `true` (ou `fait: true`) met le fichier à la corbeille.
+- **`GfsLink.onDuplicate(fn)`** : `fn({ fichier: { id, type }, nom })` s'exécute quand la personne copie un fichier de l'app (`nom` : le premier nom libre, calculé par GFS). `fn` copie le fichier en entier sous ce nom, sans le publier, et rend `{ id, nom?, dit? }` (`id` : la copie, texte ou nombre non vide ; `nom` seulement avec lui) ; `{ dit }` sans `id` dit que rien n'a été copié.
+- **Ce que GFS en fait** : une erreur que l'abonné lève part avec son texte et GFS la dit ; sans abonné, `GFS_INCONNU` (GFS dit « ne sait pas encore faire ce geste ») ; sans réponse au bout de 20 secondes, GFS n'écrit rien. Un seul abonné par appel : le dernier remplace l'autre, et se désabonner d'un abonné remplacé ne retire pas le nouveau. `id` d'un fichier qui n'est ni un texte ni un nombre arrive `null`.
+- **Pour le code** : `receiveCall` passe par une table des appels sur un fichier (`FILE_CALLS`) ; `onClose`, `onDelete` et `onDuplicate` partagent `setHandler`. Rien ne change pour `ouvrir` ni `fermer`.
+- **Essais** : 195 sous Node (4 de plus, qui échouent sur l'ancien code : les réponses de `supprimer` et de `dupliquer`, les arguments mal formés et l'erreur, `GFS_INCONNU` sans abonné et le désabonnement, un autre cadre que le parent).
+
 ## 0.9.0 : répondre à « fermer » (04/11/2026)
 
 GFS appelle `fermer` sur l'app active avant de la remplacer par une autre (contrats de GFS, 5.4 points 3 et 7). Le client du kit répondait `GFS_INCONNU` à tout appel sauf `ouvrir` : une app qui passe par le kit ne pouvait donc ni enregistrer ni garder la personne avant de partir. Rien ne change pour une app qui n'appelle pas la nouvelle fonction : elle répond `GFS_INCONNU` comme avant et part sans question.

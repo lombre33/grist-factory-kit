@@ -72,6 +72,22 @@ export async function gfsLink(env) {
     JSON.stringify(received) === '[{"raison":"explorateur"},{"raison":"app"}]' && Boolean(closed)
     && JSON.stringify(closed.map(reply => [reply.id, reply.type, reply.data && reply.data.ferme])) === '[[43,"reponse",true],[44,"reponse",false]]', { received, closed });
 
+  // `supprimer` et `dupliquer` (5.4 points 10 et 11) : sans abonné `GFS_INCONNU`, avec `onDelete` et `onDuplicate` la réponse reprend l'id dans la forme du contrat.
+  await page.evaluate(() => { window.hote.send({ gfs: 0, type: 'appel', id: 45, nom: 'supprimer', args: { fichier: { id: 9, type: 'formulaire' }, raison: 'corbeille' } }); window.hote.send({ gfs: 0, type: 'appel', id: 46, nom: 'dupliquer', args: { fichier: { id: 9, type: 'formulaire' }, nom: 'Inscription (1)' } }); });
+  const unknownFile = await until(() => fromApp(page, data => data && (data.id === 45 || data.id === 46)).then(found => (found.length >= 2 ? found : null)));
+  check('« supprimer » et « dupliquer » sans abonné reçoivent `GFS_INCONNU`, avec leur id', Boolean(unknownFile) && unknownFile.every(reply => reply.type === 'erreur' && reply.code === 'GFS_INCONNU'), unknownFile);
+  await app.evaluate(() => {
+    window.cadre.fileCalls = [];
+    window.cadre.GfsLink.onDelete((request) => { window.cadre.fileCalls.push(request); return { fait: true }; });
+    window.cadre.GfsLink.onDuplicate((request) => { window.cadre.fileCalls.push(request); return { id: 'copie-1', nom: 'Inscription (2)', dit: 'Copie fermée.' }; });
+  });
+  await page.evaluate(() => { window.hote.send({ gfs: 0, type: 'appel', id: 47, nom: 'supprimer', args: { fichier: { id: 9, type: 'formulaire' }, raison: 'corbeille' } }); window.hote.send({ gfs: 0, type: 'appel', id: 48, nom: 'dupliquer', args: { fichier: { id: 9, type: 'formulaire' }, nom: 'Inscription (1)' } }); });
+  const fileReplies = await until(() => fromApp(page, data => data && (data.id === 47 || data.id === 48)).then(found => (found.length >= 2 ? found : null)));
+  const fileReceived = await app.evaluate(() => window.cadre.fileCalls);
+  check('« supprimer » et « dupliquer » avec abonné : l\'app reçoit le fichier, la raison et le nom, chaque réponse reprend son id dans la forme du contrat',
+    JSON.stringify(fileReceived) === '[{"fichier":{"id":9,"type":"formulaire"},"raison":"corbeille"},{"fichier":{"id":9,"type":"formulaire"},"nom":"Inscription (1)"}]' && Boolean(fileReplies)
+    && JSON.stringify(fileReplies.map(reply => [reply.id, reply.type, reply.data])) === '[[47,"reponse",{"fait":true}],[48,"reponse",{"id":"copie-1","nom":"Inscription (2)","dit":"Copie fermée."}]]', { fileReceived, fileReplies });
+
   // Les liens entre apps (5.4) : la demande part dans la forme du contrat, la clé rendue par GFS est lue, l'annulation rend null, un refus de GFS garde son code.
   const calls = name => fromApp(page, data => data && data.type === 'appel' && data.nom === name);
   const later = async (name, count) => until(() => calls(name).then(found => (found.length >= count ? found : null)));

@@ -16,6 +16,7 @@
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
 //   GfsLink.openFile({ app, id, type })          // GFS ouvre ce fichier dans son app : { ouvert } ; dans une autre app que celle-ci, elle prend la place de celle-ci (5.4, point 7)
 //   GfsLink.deposit({ fichier, nom, type?, lot?, suivants?, dossier? })   // GFS garde ce fichier que l'app vient de fabriquer (un export en PDF) : { statut, id, nom } (5.4, point 9)
+//   GfsLink.onDelete(fn), GfsLink.onDuplicate(fn)   // GFS met à la corbeille ou copie un fichier de l'app qui tient à plus qu'une ligne (un formulaire : sa section, sa table, son lien) : fn({ fichier, raison | nom }) rend { fait, dit? } | { id, nom?, dit? } (5.4, points 10 et 11)
 //   GfsLink.onClose(fn)                          // GFS va remplacer l'app par une autre (fenêtre des apps, fichier d'une autre app, lien) : fn({ raison }) enregistre ce qui attend ou pose sa question (Enregistrer, Abandonner, Annuler), puis rend vrai si l'app peut partir, faux si la personne reste (5.4, point 3)
 // `choose` et `openFile` sont les liens entre apps : l'app garde la clé { app, id, type } que `choose` rend (le nom n'est qu'une étiquette) et la rend à `openFile` ; un fichier disparu rejette `openFile`
 // avec `GFS_INTROUVABLE`, une personne qui ne débloque pas l'app avec `GFS_ANNULE`, jamais le lien lui-même.
@@ -27,6 +28,10 @@
 // `onClose` est la réponse à l'appel `fermer` : GFS ne détruit le cadre de l'app qu'après `{ ferme: true }`. L'abonné rend (ou résout) exactement `true` pour laisser partir l'app, après avoir enregistré
 // ce qui attend (enregistrement automatique allumé : sans question) ou après la question de l'app ; tout autre retour est `{ ferme: false }` (la personne a annulé : tout reste en place) ; une erreur qu'il lève part avec
 // son texte et GFS demande à la personne. Sans abonné, l'app répond `GFS_INCONNU` et part comme avant ; sans réponse au bout de 10 secondes, GFS demande à la personne s'il doit fermer quand même.
+// `onDelete` répond à `supprimer { fichier: { id, type }, raison }` (`raison` vaut `corbeille`) : l'abonné ferme ce qui est public (le lien d'un formulaire), puis rend (ou résout) `{ fait: true }` ; `{ fait: false, dit }` quand
+// il ne peut pas (`dit`, une phrase d'une ligne, 200 signes au plus : GFS l'ajoute à la sienne) ; rendre seulement `true` ou `false` suffit. `onDuplicate` répond à `dupliquer { fichier: { id, type }, nom }` : l'abonné copie
+// le fichier en entier sous ce nom, sans le publier, et rend `{ id, nom?, dit? }` (`id` : la copie, `nom` seulement s'il l'a changé) ; `{ dit }` sans `id` veut dire qu'il n'a rien copié. Une erreur qu'un abonné lève part avec son
+// texte ; sans abonné, `GFS_INCONNU` comme avant (GFS le dit à la personne).
 // Chaque abonné (`on…`) est rappelé quand la valeur change, l'arrivée du contexte comprise, et chaque `on…` rend de quoi se désabonner. Seule, l'app n'écoute ni n'envoie rien : le
 // contexte, l'ouverture, la langue, la barre, l'identité et l'ambiance sont null, les extensions vides. Un message n'est lu que s'il vient du cadre parent (`event.source`) et porte le contrat de GFS ;
 // l'écoute passe par addEventListener, jamais par `window.onmessage =`, qui remplacerait celle du script d'API de Grist.
@@ -241,10 +246,52 @@ function deliverClose(link, request) {
   deliver(link, request.id, () => link.closeHandler({ raison: request.raison }), closed => ({ ferme: closed === true }), 'fermeture');
 }
 
-// Un appel de GFS vers l'app : `ouvrir` va à celui qui s'est inscrit (onOpen), dans l'ordre d'arrivée, même avant son inscription ; `fermer` à celui de onClose, quand il y en a un ; tout autre nom
-// (et `fermer` sans abonné : l'app n'a rien à enregistrer qu'elle sache) reçoit `GFS_INCONNU` (5.1, point 3).
+const sentence = value => (typeof value === 'string' ? value.slice(0, 200) : '');
+
+// `supprimer` (5.4, point 10) : `{ fait: true }` quand l'abonné le dit (`{ fait: true }` ou `true`), `{ fait: false }` sinon ; `dit` suit quand c'est une phrase.
+function deleteReply(outcome) {
+  const done = isObject(outcome) ? outcome.fait === true : outcome === true;
+  const dit = isObject(outcome) ? sentence(outcome.dit) : '';
+  return dit ? { fait: done, dit } : { fait: done };
+}
+
+// `dupliquer` (5.4, point 11) : `id` seulement quand c'est un texte ou un nombre non vide (une copie), `nom` seulement avec lui, `dit` quand c'est une phrase ; `{}` : rien n'a été copié.
+function copyReply(outcome) {
+  const given = isObject(outcome) ? outcome : {};
+  const reply = {};
+  if ((typeof given.id === 'string' || typeof given.id === 'number') && String(given.id) !== '') {
+    reply.id = given.id;
+    if (typeof given.nom === 'string' && given.nom !== '') reply.nom = given.nom.slice(0, 200);
+  }
+  const dit = sentence(given.dit);
+  if (dit) reply.dit = dit;
+  return reply;
+}
+
+// Les deux appels sur un fichier de l'app : le fichier est `{ id, type }` (texte ou nombre, texte), le reste est `raison` pour `supprimer`, `nom` pour `dupliquer`.
+function deliverFileCall(link, id, message) {
+  const args = isObject(message.args) ? message.args : {};
+  const file = isObject(args.fichier) ? args.fichier : {};
+  const fichier = { id: typeof file.id === 'string' || typeof file.id === 'number' ? file.id : null, type: typeof file.type === 'string' ? file.type.slice(0, 80) : '' };
+  if (message.nom === 'supprimer') {
+    const request = { fichier, raison: typeof args.raison === 'string' ? args.raison.slice(0, 40) : '' };
+    deliver(link, id, () => link.deleteHandler(request), deleteReply, 'mise à la corbeille');
+  } else {
+    const request = { fichier, nom: typeof args.nom === 'string' ? args.nom.slice(0, 200) : '' };
+    deliver(link, id, () => link.copyHandler(request), copyReply, 'copie');
+  }
+}
+
+const FILE_CALLS = { supprimer: 'deleteHandler', dupliquer: 'copyHandler' };
+
+// Un appel de GFS vers l'app : `ouvrir` va à celui qui s'est inscrit (onOpen), dans l'ordre d'arrivée, même avant son inscription ; `fermer`, `supprimer` et `dupliquer` à celui de onClose, onDelete et
+// onDuplicate, quand il y en a un ; tout autre nom (et ces trois sans abonné : l'app n'a rien à y faire qu'elle sache) reçoit `GFS_INCONNU` (5.1, point 3).
 function receiveCall(link, message) {
   const id = Number.isInteger(message.id) ? message.id : null;
+  if (Object.hasOwn(FILE_CALLS, message.nom) && link[FILE_CALLS[message.nom]]) {
+    deliverFileCall(link, id, message);
+    return;
+  }
   if (message.nom === 'fermer' && link.closeHandler) {
     const raison = isObject(message.args) && typeof message.args.raison === 'string' ? message.args.raison.slice(0, 40) : '';
     deliverClose(link, { id, raison });
@@ -372,9 +419,10 @@ function onOpen(link, fn) {
   return () => { if (link.openHandler === fn) link.openHandler = null; };
 }
 
-function onClose(link, fn) {
-  link.closeHandler = fn;
-  return () => { if (link.closeHandler === fn) link.closeHandler = null; };
+// Un seul abonné par appel de GFS : le dernier remplace l'autre, et se désabonner d'un abonné remplacé ne retire pas le nouveau.
+function setHandler(link, key, fn) {
+  link[key] = fn;
+  return () => { if (link[key] === fn) link[key] = null; };
 }
 
 function newLink(host) {
@@ -384,7 +432,7 @@ function newLink(host) {
     host, contract, hosted: contract !== null, known: false, nextId: 1,
     context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, storage: null, extensions: [], libraries: new Map(),
     listeners: { language: new Set(), bar: new Set(), identity: new Set(), ambiance: new Set(), extensions: new Set() },
-    pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null,
+    pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null, deleteHandler: null, copyHandler: null,
   };
 }
 
@@ -422,7 +470,9 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     // Un lien `mailto:` ou `tel:` suivi dans le cadre isolé de GFS le fait mourir (contrats 1.3, point 1) : hébergée, l'app l'ouvre dans un nouvel onglet. Seule, faux.
     opensInNewTab: href => link.hosted && /^(?:mailto|tel):/i.test(String(href == null ? '' : href).trim()),
     onOpen: fn => onOpen(link, fn),
-    onClose: fn => onClose(link, fn),
+    onClose: fn => setHandler(link, 'closeHandler', fn),
+    onDelete: fn => setHandler(link, 'deleteHandler', fn),
+    onDuplicate: fn => setHandler(link, 'copyHandler', fn),
     onLanguage: fn => subscribe(link.listeners.language, fn),
     onBar: fn => subscribe(link.listeners.bar, fn),
     onIdentity: fn => subscribe(link.listeners.identity, fn),

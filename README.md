@@ -12,8 +12,8 @@ Référencer le kit à une étiquette (un commit à part dans l'app, relu) :
 
 ```sh
 git submodule add https://github.com/lombre33/grist-factory-kit.git kit
-git -C kit checkout v0.9.0
-git add kit && git commit -m "Kit v0.9.0"
+git -C kit checkout v0.10.0
+git add kit && git commit -m "Kit v0.10.0"
 ```
 
 Dans la page, les deux feuilles avant celle de l'app :
@@ -52,6 +52,8 @@ await GfsLink.ready;                                   // le contexte est arriv�
 const wanted = GfsLink.opening();                      // ce que GFS demande d'ouvrir au démarrage, ou null ; avec `importation` ou `lecture` quand GFS passe un fichier
 GfsLink.onOpen(async ({ fichier, type }) => openFile(fichier, type));   // le double-clic sur un autre fichier, l'app déjà ouverte : rendre vrai une fois ouvert
 GfsLink.onClose(async ({ raison }) => saveOrAsk(raison));   // GFS va remplacer l'app par une autre : enregistrer (ou poser sa question), puis rendre vrai si l'app peut partir, faux si la personne reste
+GfsLink.onDelete(async ({ fichier, raison }) => closeAndTrash(fichier));   // GFS met à la corbeille un fichier de l'app qui tient à plus qu'une ligne : fermer ce qui est public, rendre { fait: true } ou { fait: false, dit }
+GfsLink.onDuplicate(async ({ fichier, nom }) => copyWhole(fichier, nom)); // GFS copie un tel fichier sous ce nom : rendre { id, nom?, dit? } (la copie n'est pas publiée), ou { dit } sans `id` si rien n'a été copié
 GfsLink.onLanguage(language => I18n.setLanguage(language));
 GfsLink.onBar(bar => keepClear(bar));                  // ce que la barre de GFS recouvre : { bord, epaisseur, zone } ou null
 GfsLink.onIdentity(person => showMine(person));        // l'adresse e-mail de la personne : { email } ou null (GFS ne la donne qu'à l'app qui l'a déclarée)
@@ -63,6 +65,7 @@ const stored = await GfsLink.deposit({ fichier: pdf, nom: 'Facture.pdf', lot: 'e
 
 - **Le contexte** (`GfsLink.context()`) garde ses champs connus (document, page, accès, lecture seule…) et rien d'autre ; chaque `on…` rappelle son abonné quand la valeur change vraiment, avec sa propre copie, et rend de quoi se désabonner.
 - **Le départ de l'app** : quand la personne ouvre un fichier d'une autre app, GFS appelle `fermer` avant de détruire le cadre. `onClose(fn)` rappelle `fn({ raison })` (`raison` : `app`, `explorateur`, `nouveau`, `importer`, `lire` ou `lien`, au plus 40 signes, vide si GFS n'en donne pas) ; `fn` enregistre ce qui attend ou pose sa question (Enregistrer, Abandonner, Annuler), puis rend vrai si l'app peut partir ou faux si la personne reste. Seul `true` ferme ; une erreur part chez GFS avec son texte (≤ 200 signes) et c'est la personne qui décide. Un seul abonné à la fois, `onClose` rend de quoi se désabonner. Sans abonné, l'app répond `GFS_INCONNU` et part sans question, comme avant la 0.9.0 ; une app qui ne répond à rien fait attendre GFS 10 secondes. L'enregistrement automatique allumé enregistre et rend vrai sans poser de question (contrats de GFS, 5.4 point 3).
+- **Mettre à la corbeille et copier un fichier qui tient à plus qu'une ligne** (un formulaire : sa ligne, sa section, sa table de réponses, son lien public) : GFS ne sait pas le faire seul, il appelle l'app du fichier. `onDelete(fn)` rappelle `fn({ fichier: { id, type }, raison })` (`raison` vaut `corbeille`) : `fn` ferme ce qui est public puis rend `{ fait: true }`, ou `{ fait: false, dit }` quand elle ne peut pas (`dit`, une phrase de 200 signes au plus, que GFS ajoute à la sienne) ; rendre seulement `true` ou `false` suffit. `onDuplicate(fn)` rappelle `fn({ fichier: { id, type }, nom })` (`nom` : le premier nom libre, que GFS a calculé) : `fn` copie le fichier en entier sous ce nom, sans le publier, et rend `{ id, nom?, dit? }` ; `{ dit }` sans `id` dit que rien n'a été copié. Une erreur part chez GFS avec son texte ; sans abonné, `GFS_INCONNU` (GFS le dit à la personne). Les contrats de GFS, 5.4 points 10 et 11.
 - **Les choix de la personne** : dans GFS, le cadre de l'app n'a pas de stockage à lui ; `storageGet` lit la copie que le contexte a rendue, `storageSet` la change et l'envoie à GFS (`valeur` null retire la clé). Une clé fait 1 à 64 caractères parmi lettres, chiffres, `_ . : -`, une valeur est un texte. Seule, les deux passent par le navigateur, qui peut refuser sans rien casser.
 - **La barre de GFS** se pose par-dessus le cadre de l'app : l'app écarte de `zone` ce qu'elle met à ce bord, sans réserver de bande. `GfsLink.hideBar(true)` la retire pour un diaporama plein cadre, qui offre alors sa propre sortie (Échap), puis `hideBar(false)`.
 - **L'ambiance** : `ambiance()` rend le message d'ambiance que la personne a choisi pour GFS et ses apps (`{ id, couleur, ajustee, clair, sombre, forme }`, jetons connus et valeurs vérifiées seulement), ou `null` : rien n'est choisi, l'app garde ses couleurs. `Ambiance.start()` (ci-dessous) la pose.

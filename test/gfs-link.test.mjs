@@ -608,3 +608,99 @@ test('ambiance : l\'événement d\'un autre cadre n\'est pas lu', async () => {
   fake.deliver({ gfs: 0, type: 'evenement', nom: 'ambiance', data: { ambiance: AMBIANCE } }, { postMessage() {} });
   assert.equal(link.ambiance(), null);
 });
+
+// ---------- `supprimer` et `dupliquer` : un fichier qui tient à plus qu'une ligne (contrats de GFS, 5.4 points 10 et 11) ----------
+
+const fileCall = (fake, id, nom, args) => fake.deliver({ gfs: 0, type: 'appel', ...(id === undefined ? {} : { id }), nom, args });
+const replyTo = (fake, id) => fake.sent.map(entry => entry.message).filter(message => message.id === id).at(-1);
+
+test('`supprimer` : l\'abonné reçoit le fichier et la raison ; `{ fait }` ou un simple booléen, `dit` suit quand c\'est une phrase, et la réponse reprend l\'`id`', async () => {
+  const { fake, link } = await hosted();
+  const asked = [];
+  const answers = [{ fait: true }, { fait: false, dit: 'Un lien public est encore ouvert.' }, true, false, undefined, { fait: 'oui', dit: 42 }, { fait: true, dit: 'y'.repeat(300) }];
+  link.onDelete(request => { asked.push(request); return Promise.resolve(answers.shift()); });
+  const args = { fichier: { id: 7, type: 'formulaire' }, raison: 'corbeille' };
+  [50, 51, 52, 53, 54, 55, 56].forEach(id => fileCall(fake, id, 'supprimer', args));
+  await tick();
+  assert.deepEqual(asked, Array(7).fill({ fichier: { id: 7, type: 'formulaire' }, raison: 'corbeille' }));
+  assert.deepEqual([50, 51, 52, 53, 54, 55, 56].map(id => replyTo(fake, id).data), [
+    { fait: true }, { fait: false, dit: 'Un lien public est encore ouvert.' }, { fait: true }, { fait: false }, { fait: false }, { fait: false }, { fait: true, dit: 'y'.repeat(200) },
+  ], 'seul `true` ferme ; une phrase vide ou qui n\'en est pas une ne part pas ; la phrase est coupée à 200 signes');
+  assert.ok([50, 51].every(id => replyTo(fake, id).type === 'reponse'));
+});
+
+test('`dupliquer` : l\'abonné reçoit le fichier et le nom libre ; `{ id, nom?, dit? }` part tel quel, une réponse sans `id` (ou vide) dit seulement qu\'il n\'a rien copié', async () => {
+  const { fake, link } = await hosted();
+  const asked = [];
+  const answers = [{ id: 12 }, { id: 'abc', nom: 'Inscription (2)', dit: 'Copie fermée.' }, { dit: 'Rien à copier.' }, { id: '' , nom: 'x' }, undefined, { id: {}, dit: 'x' }, { nom: 'sans id' }];
+  link.onDuplicate(request => { asked.push(request); return Promise.resolve(answers.shift()); });
+  const args = { fichier: { id: 'f1', type: 'formulaire' }, nom: 'Inscription (1)' };
+  [60, 61, 62, 63, 64, 65, 66].forEach(id => fileCall(fake, id, 'dupliquer', args));
+  await tick();
+  assert.deepEqual(asked, Array(7).fill({ fichier: { id: 'f1', type: 'formulaire' }, nom: 'Inscription (1)' }));
+  assert.deepEqual([60, 61, 62, 63, 64, 65, 66].map(id => replyTo(fake, id).data), [
+    { id: 12 }, { id: 'abc', nom: 'Inscription (2)', dit: 'Copie fermée.' }, { dit: 'Rien à copier.' }, {}, {}, { dit: 'x' }, {},
+  ], '`nom` ne part qu\'avec un `id`, un `id` vide ou qui n\'est ni texte ni nombre n\'est pas une copie');
+});
+
+test('`supprimer` et `dupliquer` : des arguments mal formés arrivent normalisés, une erreur part avec son texte, un appel sans `id` n\'a pas de réponse', async () => {
+  const { fake, link } = await hosted();
+  const seen = [];
+  let fail = false;
+  link.onDelete((request) => { seen.push(request); if (fail) throw new Error('Lien impossible à fermer'); return true; });
+  link.onDuplicate((request) => { seen.push(request); if (fail) throw new Error('Copie refusée'); return { id: 1 }; });
+  fileCall(fake, 70, 'supprimer', null);
+  fileCall(fake, 71, 'supprimer', { fichier: { id: [1], type: 42 }, raison: 'x'.repeat(100) });
+  fileCall(fake, 72, 'dupliquer', { fichier: 'f', nom: 'n'.repeat(500) });
+  await tick();
+  assert.deepEqual(seen, [
+    { fichier: { id: null, type: '' }, raison: '' },
+    { fichier: { id: null, type: '' }, raison: 'x'.repeat(40) },
+    { fichier: { id: null, type: '' }, nom: 'n'.repeat(200) },
+  ]);
+  fail = true;
+  const warnings = await quietly(async () => { fileCall(fake, 73, 'supprimer', { fichier: { id: 1, type: 't' } }); fileCall(fake, 74, 'dupliquer', { fichier: { id: 1, type: 't' }, nom: 'a' }); await tick(); });
+  assert.deepEqual(replyTo(fake, 73), { gfs: 0, id: 73, type: 'erreur', message: 'Lien impossible à fermer' });
+  assert.deepEqual(replyTo(fake, 74), { gfs: 0, id: 74, type: 'erreur', message: 'Copie refusée' });
+  assert.match(warnings.join('\n'), /mise à la corbeille demandée par GFS en échec/);
+  assert.match(warnings.join('\n'), /copie demandée par GFS en échec/);
+  const before = fake.sent.length;
+  fileCall(fake, undefined, 'supprimer', { fichier: { id: 1, type: 't' } });
+  await tick();
+  assert.equal(fake.sent.length, before, 'un appel sans `id` n\'attend pas de réponse');
+});
+
+test('`supprimer` et `dupliquer` sans abonné reçoivent `GFS_INCONNU` ; se désabonner y revient, un abonné remplacé ne retire pas le nouveau, un autre cadre n\'appelle personne', async () => {
+  const { fake, link } = await hosted();
+  for (const [id, nom] of [[80, 'supprimer'], [81, 'dupliquer']]) {
+    fileCall(fake, id, nom, { fichier: { id: 1, type: 't' }, nom: 'a' });
+    assert.deepEqual([replyTo(fake, id).type, replyTo(fake, id).code], ['erreur', 'GFS_INCONNU'], `${nom} sans abonné`);
+  }
+  const offDelete = link.onDelete(() => true);
+  const offCopy = link.onDuplicate(() => ({ id: 2 }));
+  fileCall(fake, 82, 'supprimer', { fichier: { id: 1, type: 't' } });
+  fileCall(fake, 83, 'dupliquer', { fichier: { id: 1, type: 't' }, nom: 'a' });
+  await tick();
+  assert.deepEqual([replyTo(fake, 82).data, replyTo(fake, 83).data], [{ fait: true }, { id: 2 }]);
+  offDelete();
+  offCopy();
+  fileCall(fake, 84, 'supprimer', { fichier: { id: 1, type: 't' } });
+  fileCall(fake, 85, 'dupliquer', { fichier: { id: 1, type: 't' }, nom: 'a' });
+  assert.deepEqual([replyTo(fake, 84).code, replyTo(fake, 85).code], ['GFS_INCONNU', 'GFS_INCONNU']);
+  const second = link.onDelete(() => false);
+  const first = link.onDelete(() => true);
+  second();
+  fileCall(fake, 86, 'supprimer', { fichier: { id: 1, type: 't' } });
+  await tick();
+  assert.equal(replyTo(fake, 86).data.fait, true, 'se désabonner d\'un abonné remplacé ne retire pas le nouveau');
+  first();
+  let called = 0;
+  link.onDelete(() => { called++; return true; });
+  link.onDuplicate(() => { called++; return { id: 3 }; });
+  const before = fake.sent.length;
+  fake.deliver({ gfs: 0, type: 'appel', id: 87, nom: 'supprimer', args: { fichier: { id: 1, type: 't' } } }, { postMessage() {} });
+  fake.deliver({ gfs: 0, type: 'appel', id: 88, nom: 'dupliquer', args: { fichier: { id: 1, type: 't' }, nom: 'a' } }, { postMessage() {} });
+  await tick();
+  assert.equal(called, 0);
+  assert.equal(fake.sent.length, before);
+});
