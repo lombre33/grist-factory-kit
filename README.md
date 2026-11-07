@@ -171,6 +171,24 @@ calendrier.definir({ lignes, options });     // à rappeler à chaque changement
 - **Les événements qui glissent sont des `<div role="button" draggable="true">`**, jamais des `<button>` : un `<button draggable>` ne glisse pas sous Firefox avant la 147.
 - **La feuille** ne porte que des jetons (couleurs, formes avec leur valeur d'origine en repli, `--z-menu`) : l'ambiance de GFS la suit, en clair et en sombre.
 
+## Le moteur de partage entre documents
+
+Le moteur de Sync+ (« Synchro Grist »), qui envoie des tables d'un document Grist à un autre (une fois, ou tenu à jour par webhook) et les reçoit : la table technique `Synchro`, les journaux de réception, les règles d'accès, les pièces jointes, les codes d'invitation. **Une copie à un commit** (`js/synchro/`, repris de `js/engine/` de Sync+ par `outils/reprendre-synchro.mjs`) : le choix du porteur est de l'intégrer, pas de le refaire. Il ne dessine rien, ne lit ni `document`, ni `window`, ni le global `grist`, n'importe rien hors de lui, et ne parle à Grist que par un `port` que l'hôte lui donne.
+
+```js
+import { startEngine, ENGINE_VERSION } from './kit/js/synchro/index.js';
+import { TEXTES } from './kit/js/synchro/textes.js';
+
+startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le même préfixe pour un même document
+```
+
+- **Le `port`** (`PORT_SHAPE`, `js/synchro/port.js`) : lire et écrire des lignes (`fetchRows`, `apply`, `readSchema`, `selectRows`, `querySql`), l'identité du document et les droits (`docIdentity`, `isOwner`, `docChanges`), les pièces jointes, les webhooks et l'envoi direct à leur adresse, la lecture d'un document public (`publicRecords`), `withLock`, `text`, `page.{visible, busy, onShow, onLeave}` et `prefs.{read, write}`. Un port incomplet est refusé au démarrage.
+- **Le préfixe** des tables que le moteur crée (`<préfixe>Synchro`, `<préfixe>Journal_<export>`, destinations proposées) : une majuscule puis des lettres, chiffres ou soulignés, 32 signes au plus ; vide par défaut. Deux documents qui s'envoient des données par un lien public ont le même préfixe. Les noms de colonnes (`Synchro_Export`, `id_sync`, `MajLe`…) sont le protocole entre deux documents.
+- **Les textes** que le moteur demande à l'hôte (`port.text(clé, valeurs)`) : `js/synchro/textes.js`, en français et en anglais ; l'hôte rend la clé elle-même quand il ne la connaît pas.
+- **Le mode d'emploi du moteur** : `js/synchro/README.md`. Sa version (`ENGINE_VERSION`) ne suit pas celle du kit ; elle est dite dans le journal ci-dessous.
+- **Les essais** (`test/synchro-*.test.mjs`, 240) sont ceux de Sync+ pour son moteur, dont un passage complet sur un Grist en mémoire (`test/synchro-fake.mjs`).
+- **Mettre à jour la copie** : `node outils/reprendre-synchro.mjs <dépôt de Sync+>`, puis les essais, puis une ligne au journal. Seul GFS le fait ; les corrections qu'il y apporte, il les dit à Sync+ (sa page d'état), qui reprend la version du kit.
+
 ## Ce que contient le kit
 
 | Fichier | Ce qu'il donne |
@@ -195,6 +213,8 @@ calendrier.definir({ lignes, options });     // à rappeler à chaque changement
 | `css/calendrier.css` | La feuille du calendrier : des jetons seulement, aucune couleur ni `z-index` en dur. À charger après `tokens.css`. |
 | `js/calendrier/index.js` | `creerCalendrier(rappels)` : le calendrier (ci-dessus). Son noyau (`noyau/` : dates civiles, événements, placement des barres, blocs horaires, déplacement) ne connaît ni le DOM ni Grist ; ses vues sont dans `vue/`, ses textes dans `textes.js`. |
 | `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |
+| `js/synchro/index.js` | `startEngine({ port, prefix })`, `ENGINE_VERSION`, `PORT_SHAPE`, `TABLE_PREFIX_RULE` : le moteur de partage entre documents (ci-dessus). Ses dossiers : `logic/` (la décision, sans effet), `source/` et `target/` (l'envoi et la réception), `acl.js`, `pages.js`, `exchange.js`, `form-link.js`, `errors.js`. |
+| `js/synchro/textes.js` | `TEXTES` : les textes `error.*` et `recv.*` que le moteur demande à son hôte, en français et en anglais. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
 

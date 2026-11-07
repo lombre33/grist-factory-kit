@@ -2,6 +2,16 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.12.0 : le moteur de partage entre documents, repris de Sync+ (07/11/2026)
+
+Partager un dossier ou un fichier de l'explorateur de GFS avec un autre document qui a GFS (décision du porteur du 06/11) : GFS fait tourner le moteur de Sync+ dans sa page, avec son propre port vers Grist. Le moteur est séparé des écrans de Sync+ depuis sa version 1.0.0 (consigne 002 de GFS).
+
+- **`js/synchro/`** : copie de `js/engine/` de Sync+ au commit `2ea1c9f` (moteur **1.0.0**) : `startEngine({ port, prefix })`, `ENGINE_VERSION`, `PORT_SHAPE`. Rien d'autre n'est appelé pour le démarrer ; les écrans importent les modules dont ils ont besoin (`source/`, `target/`, `logic/`). Aucun accès à l'écran, aucune bibliothèque, aucune adresse.
+- **`js/synchro/textes.js`** : les 47 textes (`error.*`, `recv.*`) que le moteur demande à son hôte, en français et en anglais.
+- **`outils/reprendre-synchro.mjs`** : refait la copie depuis un dépôt de Sync+ (moteur, essais, textes).
+- **Pas encore là** : l'enchaînement des assistants (SOURCE : réponse, approbation ; CIBLE : invitation, réception), qui reste côté écran chez Sync+ ; GFS l'a demandé à Sync+ (consigne 003), il viendra dans une version 1.x du moteur.
+- **Essais** : 440 sous Node (240 de plus, ceux de Sync+ pour son moteur, `test/synchro-*.test.mjs`) ; le seuil de 600 lignes ne compte que les lignes de code pour `js/synchro/`, comme l'outil d'audit.
+
 ## 0.11.0 : joindre un PDF à la ligne d'où il vient (06/11/2026)
 
 L'export d'une ligne de Publipostage+ (un PDF par ligne) doit pouvoir entrer dans la cellule « Pièces jointes » de cette ligne (contrats de GFS, 5.4 point 12). Dans GFS l'app n'a pas de jeton d'écriture : elle donne les octets, GFS joint.
