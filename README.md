@@ -183,11 +183,12 @@ import { TEXTES } from './kit/js/synchro/textes.js';
 startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le même préfixe pour un même document
 ```
 
-- **Le `port`** (`PORT_SHAPE`, `js/synchro/port.js`) : lire et écrire des lignes (`fetchRows`, `apply`, `readSchema`, `selectRows`, `querySql`), l'identité du document et les droits (`docIdentity`, `isOwner`, `docChanges`), les pièces jointes, les webhooks et l'envoi direct à leur adresse, la lecture d'un document public (`publicRecords`), `withLock`, `text`, `page.{visible, busy, onShow, onLeave}` et `prefs.{read, write}`. Un port incomplet est refusé au démarrage.
+- **Le `port`** (`PORT_SHAPE`, `js/synchro/port.js`) : lire et écrire des lignes (`fetchRows`, `apply`, `readSchema`, `selectRows`, `querySql`, `journalStats`), l'identité du document et les droits (`docIdentity`, `isOwner`, `docChanges`), les pièces jointes, les webhooks et l'envoi direct à leur adresse, la lecture d'un document public (`publicRecords`, `publicAccess`) et le document que désigne la clé d'un formulaire (`shareInfo`), `withLock`, `text`, `page.{visible, busy, onShow, onLeave}` et `prefs.{read, write}`. Un port incomplet est refusé au démarrage. **`createRestPort({ docApi, http })`** (`js/synchro/rest-port.js`) écrit une fois tout le REST (webhooks, comparaison d'états, SQL, envois directs, lecture publique, fiche d'un partage, pièces jointes) : l'hôte ne donne que `http` (`request`, `anonymous`, `download`, `upload`, `docBaseUrl`).
+- **Les enchaînements sans fenêtre** : SOURCE (`source/export.js`, `source/invite.js`, `source/hook-check.js`), CIBLE (`target/receive.js`, `target/loop.js`), `diagnostic.js` ; ils prennent des données simples et rendent des données, le texte passant par `port.text` ou une erreur prévue. Le jugement d'un lien collé (document désigné par la clé, code de contrôle, signature, invitation périmée, autre instance) est dans le moteur, jamais dans un écran.
 - **Le préfixe** des tables que le moteur crée (`<préfixe>Synchro`, `<préfixe>Journal_<export>`, destinations proposées) : une majuscule puis des lettres, chiffres ou soulignés, 32 signes au plus ; vide par défaut. Deux documents qui s'envoient des données par un lien public ont le même préfixe. Les noms de colonnes (`Synchro_Export`, `id_sync`, `MajLe`…) sont le protocole entre deux documents.
 - **Les textes** que le moteur demande à l'hôte (`port.text(clé, valeurs)`) : `js/synchro/textes.js`, en français et en anglais ; l'hôte rend la clé elle-même quand il ne la connaît pas.
 - **Le mode d'emploi du moteur** : `js/synchro/README.md`. Sa version (`ENGINE_VERSION`) ne suit pas celle du kit ; elle est dite dans le journal ci-dessous.
-- **Les essais** (`test/synchro-*.test.mjs`, 240) sont ceux de Sync+ pour son moteur, dont un passage complet sur un Grist en mémoire (`test/synchro-fake.mjs`).
+- **Les essais** (`test/synchro-*.test.mjs`, 28 fichiers) sont ceux de Sync+ pour son moteur (sauf les trois qui lisent un de ses écrans), dont un passage complet sur un Grist en mémoire (`test/synchro-fake.mjs`) ; `test/synchro-i18n.mjs` tient la place de son `format` de textes.
 - **Mettre à jour la copie** : `node outils/reprendre-synchro.mjs <dépôt de Sync+>`, puis les essais, puis une ligne au journal. Seul GFS le fait ; les corrections qu'il y apporte, il les dit à Sync+ (sa page d'état), qui reprend la version du kit.
 
 ## Ce que contient le kit
@@ -215,7 +216,7 @@ startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le mêm
 | `js/calendrier/index.js` | `creerCalendrier(rappels)` : le calendrier (ci-dessus). Son noyau (`noyau/` : dates civiles, événements, placement des barres, blocs horaires, déplacement) ne connaît ni le DOM ni Grist ; ses vues sont dans `vue/`, ses textes dans `textes.js`. |
 | `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |
 | `js/synchro/index.js` | `startEngine({ port, prefix })`, `ENGINE_VERSION`, `PORT_SHAPE`, `TABLE_PREFIX_RULE` : le moteur de partage entre documents (ci-dessus). Ses dossiers : `logic/` (la décision, sans effet), `source/` et `target/` (l'envoi et la réception), `acl.js`, `pages.js`, `exchange.js`, `form-link.js`, `errors.js`. |
-| `js/synchro/textes.js` | `TEXTES` : les textes `error.*` et `recv.*` que le moteur demande à son hôte, en français et en anglais. |
+| `js/synchro/textes.js` | `TEXTES` : les textes `error.*`, `diag.*` et `recv.*` que le moteur demande à son hôte, en français et en anglais. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
 

@@ -29,10 +29,13 @@ const tests = join(source, 'tests/unit');
 let copied = 0;
 for (const name of readdirSync(tests).sort()) {
   const text = readFileSync(join(tests, name), 'utf8');
-  if (/from '\.\.\/\.\.\/js\/(?!engine\/)/.test(text)) continue;
+  // Un essai qui lit un écran de Sync+ (import statique ou dynamique) reste chez Sync+. Seuls `format` de js/i18n.js (le texte d'une clé, avec ses pluriels) est remplacé par un petit outil d'essai du kit, sur les textes
+  // que le moteur demande ; i18n.test.mjs, qui garde les textes des écrans de Sync+, reste chez elle.
+  if (name === 'i18n.test.mjs' || /(?:from |import\()'\.\.\/\.\.\/js\/(?!engine\/|i18n\.js')/.test(text)) continue;
   let target = name === 'fixtures.mjs' ? 'synchro-fixtures.mjs' : name === 'engine-fake.mjs' ? 'synchro-fake.mjs' : name.startsWith('engine') ? name.replace(/^engine/, 'synchro-moteur') : `synchro-${name}`;
   const rewritten = text
     .replaceAll("'../../js/engine/", "'../js/synchro/")
+    .replaceAll("'../../js/i18n.js'", "'./synchro-i18n.mjs'")
     .replaceAll("'./fixtures.mjs'", "'./synchro-fixtures.mjs'")
     .replaceAll("'./engine-fake.mjs'", "'./synchro-fake.mjs'")
     .replaceAll("join(ROOT, 'js/engine')", "join(ROOT, 'js/synchro')")
@@ -43,12 +46,31 @@ for (const name of readdirSync(tests).sort()) {
   copied += 1;
 }
 
-// Les textes que le moteur demande à son hôte : `recv.*` et `error.*` de i18n/fr.json et i18n/en.json de Sync+.
+// L'outil d'essai qui tient la place de `format` de js/i18n.js de Sync+ : le texte d'une clé du moteur (textes.js), pluriels « {n|singulier|pluriel} » (en français 0 et 1 au singulier), nombres à la façon de la
+// langue, espaces insécables du français. Écrit à chaque reprise (le nom commence par synchro-, les anciens sont effacés plus haut).
+writeFileSync(join(KIT, 'test/synchro-i18n.mjs'), `// Écrit par outils/reprendre-synchro.mjs : ne pas modifier ici.
+import { TEXTES } from '../js/synchro/textes.js';
+
+const frenchSpaces = text => text.replace(/ ([:;?!»])/g, '\\u00a0$1').replace(/« /g, '«\\u00a0');
+
+export function format(lang, key, vars = {}) {
+  const text = TEXTES[lang][key] ?? TEXTES.fr[key] ?? key;
+  const value = name => (typeof vars[name] === 'number' ? vars[name].toLocaleString(lang) : vars[name]);
+  return (lang === 'fr' ? frenchSpaces(text) : text)
+    .replace(/\\{(\\w+)\\|([^|}]*)\\|([^}]*)\\}/g, (all, name, one, many) => {
+      const n = Number(vars[name]);
+      return (lang === 'fr' ? n <= 1 : n === 1) ? one : many;
+    })
+    .replace(/\\{(\\w+)\\}/g, (all, name) => (value(name) ?? \`{\${name}}\`));
+}
+`);
+
+// Les textes que le moteur demande à son hôte : `error.*`, `diag.*` et quelques `recv.*` de i18n/fr.json et i18n/en.json de Sync+.
 const pick = file => {
   const all = JSON.parse(readFileSync(join(source, 'i18n', file), 'utf8'));
-  return Object.fromEntries(Object.entries(all).filter(([key]) => /^(error\.|recv\.(archive\.col|lock\.waiting|result(\.none)?)$)/.test(key)));
+  return Object.fromEntries(Object.entries(all).filter(([key]) => /^(error\.|recv\.(archive\.col|lock\.waiting|result(\.none)?)$|diag\.)/.test(key)));
 };
-const textes = `// Les textes que le moteur de partage (js/synchro/) demande à son hôte par \`port.text(clé, valeurs)\`, en français et en anglais : \`error.<code>\` pour les erreurs prévues, \`recv.*\` pour ce qu'il écrit
+const textes = `// Les textes que le moteur de partage (js/synchro/) demande à son hôte par \`port.text(clé, valeurs)\`, en français et en anglais : \`error.<code>\` pour les erreurs prévues, \`diag.*\` pour le diagnostic à copier, \`recv.*\` pour ce qu'il écrit
 // dans le document. Repris de i18n/fr.json et i18n/en.json de Sync+ (commit ${commit}, moteur ${version}) par outils/reprendre-synchro.mjs ; l'hôte rend la clé elle-même quand il ne la connaît pas.
 export const TEXTES = Object.freeze({
   fr: Object.freeze(${JSON.stringify(pick('fr.json'), null, 2).replace(/\n/g, '\n  ')}),

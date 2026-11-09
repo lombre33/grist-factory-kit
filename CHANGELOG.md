@@ -2,6 +2,17 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.14.0 : le moteur de partage 2.1.0, avec ses enchaînements sans fenêtre et son REST écrit une fois (09/11/2026)
+
+Sync+ a livré les consignes 003, 004 et 005 de GFS (`09143dd`, moteur **2.0.0**, puis `3447b9f`, moteur **2.1.0**) : la copie du kit passe de 1.0.0 à **2.1.0** (Sync+ `e7054cc`).
+
+- **Moteur 2.0.0, majeure** : `PORT_SHAPE` exige trois fonctions de plus, `shareInfo` (le document que désigne la clé d'un formulaire), `renameWebhook` et `journalStats` (un port de 1.0.0 est refusé au démarrage) ; `publicAccess` rejoint les fonctions du document public. **`createRestPort({ docApi, http })`** (`js/synchro/rest-port.js`) rend toutes les fonctions du port qui sont du REST ; l'hôte ne donne que `http`. Nouveaux enchaînements sans fenêtre : `source/export.js`, `source/invite.js` (`startInvitation`, `invitationCode`, `checkReply`, `approveReply`…), `target/receive.js` (`readInvitation`, `createReception`, `receptionReply`…), `source/hook-check.js`, `diagnostic.js` ; `startEngine({ port, prefix, version })`.
+- **Moteur 2.1.0, mineure** : la CIBLE est passive (elle applique toutes les suppressions de la SOURCE, quel qu'en soit le nombre) ; la SOURCE note dans son journal quand plus de 10 lignes et 20 % d'une table de l'export disparaissent (`recentDrops`). `WAVE`, `WAVE_STRICT`, `decideWave`, `held` et les options `hold` et `wave` de `planConsolidation` sont retirés.
+- **`docChanges`** : un état de départ que Grist ne connaît plus (500 « Cannot read hash », vu sur Grist 1.7.19) rend `tables: null` (« inconnu »), jamais un ensemble vide.
+- **`js/synchro/textes.js`** : 133 textes (`error.*`, `diag.*`, quelques `recv.*`), en français et en anglais ; le diagnostic suit maintenant la langue.
+- **`outils/reprendre-synchro.mjs`** garde chez Sync+ les essais qui lisent un de ses écrans, par import statique **ou dynamique** : `doc-changes` (il charge `js/grist.js`), `exports` (il lit `hookShown`, de l'écran) et `i18n` (les textes des écrans). Les essais `diagnostic` et `moteur-flow` (une SOURCE et une CIBLE de bout en bout sur un Grist en mémoire) restent au kit : ils lisaient `format` de `js/i18n.js`, que remplace `test/synchro-i18n.mjs` (écrit par l'outil, sur `textes.js` : pluriels, nombres, espaces insécables du français).
+- **Essais** : 28 fichiers `test/synchro-*.test.mjs` ; 273 essais avec celui du seuil de lignes (`test/hygiene.test.mjs`), tous verts (aucun sauté).
+
 ## 0.13.0 : « tu restes » après un « oui » à `fermer` (09/11/2026)
 
 Quand une app a répondu `oui` à `fermer` (enregistrée, verrou levé, exécution coupée) et que la personne revient avant que GFS détruise le cadre, GFS le lui dit (contrats de GFS, 5.4 point 3). Choix du porteur du 09/11.
