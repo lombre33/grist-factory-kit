@@ -2,6 +2,13 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.13.0 : « tu restes » après un « oui » à `fermer` (09/11/2026)
+
+Quand une app a répondu `oui` à `fermer` (enregistrée, verrou levé, exécution coupée) et que la personne revient avant que GFS détruise le cadre, GFS le lui dit (contrats de GFS, 5.4 point 3). Choix du porteur du 09/11.
+
+- **`GfsLink.onStay(fn)`** : répond à l'appel `rester` de GFS. `fn({ raison })` reçoit la même `raison` que le `fermer` ; rendre `true` dit « j'ai repris » (`{ repris: true }`), tout le reste `{ repris: false }` ; une erreur part avec son texte. Sans abonné, `GFS_INCONNU` : rien ne change pour une app qui n'a rien arrêté.
+- **Essais** : 3 de plus sous Node.
+
 ## 0.12.0 : le moteur de partage entre documents, repris de Sync+ (07/11/2026)
 
 Partager un dossier ou un fichier de l'explorateur de GFS avec un autre document qui a GFS (décision du porteur du 06/11) : GFS fait tourner le moteur de Sync+ dans sa page, avec son propre port vers Grist. Le moteur est séparé des écrans de Sync+ depuis sa version 1.0.0 (consigne 002 de GFS).

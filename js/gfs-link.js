@@ -19,6 +19,7 @@
 //   GfsLink.attach({ table, colonne, mode?, fichiers: [{ ligne, fichier, nom }] })   // GFS joint ces PDF que l'app vient de fabriquer à la cellule « Pièces jointes » de leur ligne : { colonne, probleme, joints, echecs } (5.4, point 12)
 //   GfsLink.onDelete(fn), GfsLink.onDuplicate(fn)   // GFS met à la corbeille ou copie un fichier de l'app qui tient à plus qu'une ligne (un formulaire : sa section, sa table, son lien) : fn({ fichier, raison | nom }) rend { fait, dit? } | { id, nom?, dit? } (5.4, points 10 et 11)
 //   GfsLink.onClose(fn)                          // GFS va remplacer l'app par une autre (fenêtre des apps, fichier d'une autre app, lien) : fn({ raison }) enregistre ce qui attend ou pose sa question (Enregistrer, Abandonner, Annuler), puis rend vrai si l'app peut partir, faux si la personne reste (5.4, point 3)
+//   GfsLink.onStay(fn)                           // GFS dit « tu restes » : l'app avait répondu oui à `fermer`, la personne est revenue : fn({ raison }) reprend ce que `fermer` a arrêté (verrou, exécution) et rend vrai (5.4, point 3)
 // `choose` et `openFile` sont les liens entre apps : l'app garde la clé { app, id, type } que `choose` rend (le nom n'est qu'une étiquette) et la rend à `openFile` ; un fichier disparu rejette `openFile`
 // avec `GFS_INTROUVABLE`, une personne qui ne débloque pas l'app avec `GFS_ANNULE`, jamais le lien lui-même.
 // `deposit` est le rangement d'un export : l'app donne les octets (un `File` ou un `Blob`) et un nom, jamais un jeton ; GFS seul écrit ce qu'il garde, pose lui-même la question « Ce nom est déjà pris »
@@ -251,6 +252,11 @@ function deliverClose(link, request) {
   deliver(link, request.id, () => link.closeHandler({ raison: request.raison }), closed => ({ ferme: closed === true }), 'fermeture');
 }
 
+// `rester` (5.4, point 3) : GFS avait fermé l'app sur son `oui`, la personne est revenue avant que le cadre soit détruit. `{ repris: true }` quand l'abonné rend vrai (l'app a repris ce que `fermer` avait arrêté), `{ repris: false }` sinon.
+function deliverStay(link, request) {
+  deliver(link, request.id, () => link.stayHandler({ raison: request.raison }), resumed => ({ repris: resumed === true }), 'reprise');
+}
+
 const sentence = value => (typeof value === 'string' ? value.slice(0, 200) : '');
 
 // `supprimer` (5.4, point 10) : `{ fait: true }` quand l'abonné le dit (`{ fait: true }` ou `true`), `{ fait: false }` sinon ; `dit` suit quand c'est une phrase.
@@ -289,17 +295,17 @@ function deliverFileCall(link, id, message) {
 
 const FILE_CALLS = { supprimer: 'deleteHandler', dupliquer: 'copyHandler' };
 
-// Un appel de GFS vers l'app : `ouvrir` va à celui qui s'est inscrit (onOpen), dans l'ordre d'arrivée, même avant son inscription ; `fermer`, `supprimer` et `dupliquer` à celui de onClose, onDelete et
-// onDuplicate, quand il y en a un ; tout autre nom (et ces trois sans abonné : l'app n'a rien à y faire qu'elle sache) reçoit `GFS_INCONNU` (5.1, point 3).
+// Un appel de GFS vers l'app : `ouvrir` va à celui qui s'est inscrit (onOpen), dans l'ordre d'arrivée, même avant son inscription ; `fermer`, `rester`, `supprimer` et `dupliquer` à celui de onClose, onStay, onDelete et
+// onDuplicate, quand il y en a un ; tout autre nom (et ces quatre sans abonné : l'app n'a rien à y faire qu'elle sache) reçoit `GFS_INCONNU` (5.1, point 3).
 function receiveCall(link, message) {
   const id = Number.isInteger(message.id) ? message.id : null;
   if (Object.hasOwn(FILE_CALLS, message.nom) && link[FILE_CALLS[message.nom]]) {
     deliverFileCall(link, id, message);
     return;
   }
-  if (message.nom === 'fermer' && link.closeHandler) {
+  if ((message.nom === 'fermer' && link.closeHandler) || (message.nom === 'rester' && link.stayHandler)) {
     const raison = isObject(message.args) && typeof message.args.raison === 'string' ? message.args.raison.slice(0, 40) : '';
-    deliverClose(link, { id, raison });
+    (message.nom === 'fermer' ? deliverClose : deliverStay)(link, { id, raison });
     return;
   }
   if (message.nom !== 'ouvrir') {
@@ -463,7 +469,7 @@ function newLink(host) {
     host, contract, hosted: contract !== null, known: false, nextId: 1,
     context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, storage: null, extensions: [], libraries: new Map(),
     listeners: { language: new Set(), bar: new Set(), identity: new Set(), ambiance: new Set(), extensions: new Set() },
-    pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null, deleteHandler: null, copyHandler: null,
+    pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null, stayHandler: null, deleteHandler: null, copyHandler: null,
   };
 }
 
@@ -503,6 +509,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     opensInNewTab: href => link.hosted && /^(?:mailto|tel):/i.test(String(href == null ? '' : href).trim()),
     onOpen: fn => onOpen(link, fn),
     onClose: fn => setHandler(link, 'closeHandler', fn),
+    onStay: fn => setHandler(link, 'stayHandler', fn),
     onDelete: fn => setHandler(link, 'deleteHandler', fn),
     onDuplicate: fn => setHandler(link, 'copyHandler', fn),
     onLanguage: fn => subscribe(link.listeners.language, fn),

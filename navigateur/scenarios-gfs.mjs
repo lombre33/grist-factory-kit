@@ -72,6 +72,18 @@ export async function gfsLink(env) {
     JSON.stringify(received) === '[{"raison":"explorateur"},{"raison":"app"}]' && Boolean(closed)
     && JSON.stringify(closed.map(reply => [reply.id, reply.type, reply.data && reply.data.ferme])) === '[[43,"reponse",true],[44,"reponse",false]]', { received, closed });
 
+  // `rester` (5.4 point 3) : sans abonné `GFS_INCONNU` (l'app n'a rien arrêté), avec `onStay` la réponse reprend l'id et seul vrai dit « repris ».
+  await page.evaluate(() => window.hote.send({ gfs: 0, type: 'appel', id: 49, nom: 'rester', args: { raison: 'explorateur' } }));
+  const unknownStay = await until(() => fromApp(page, data => data && data.id === 49).then(found => (found.length ? found : null)));
+  check('« rester » sans abonné reçoit `GFS_INCONNU`, avec son id', Boolean(unknownStay) && unknownStay.length === 1 && unknownStay[0].type === 'erreur' && unknownStay[0].code === 'GFS_INCONNU', unknownStay);
+  await app.evaluate(() => { window.cadre.staying = []; window.cadre.GfsLink.onStay((request) => { window.cadre.staying.push(request); return request.raison !== 'app'; }); });
+  await page.evaluate(() => { window.hote.send({ gfs: 0, type: 'appel', id: 50, nom: 'rester', args: { raison: 'explorateur' } }); window.hote.send({ gfs: 0, type: 'appel', id: 51, nom: 'rester', args: { raison: 'app' } }); });
+  const stayed = await until(() => fromApp(page, data => data && (data.id === 50 || data.id === 51)).then(found => (found.length >= 2 ? found : null)));
+  const stayReceived = await app.evaluate(() => window.cadre.staying);
+  check('« rester » avec `onStay` : l\'app reçoit la raison, vrai dit « repris », faux non, chaque réponse reprend son id',
+    JSON.stringify(stayReceived) === '[{"raison":"explorateur"},{"raison":"app"}]' && Boolean(stayed)
+    && JSON.stringify(stayed.map(reply => [reply.id, reply.type, reply.data && reply.data.repris])) === '[[50,"reponse",true],[51,"reponse",false]]', { stayReceived, stayed });
+
   // `supprimer` et `dupliquer` (5.4 points 10 et 11) : sans abonné `GFS_INCONNU`, avec `onDelete` et `onDuplicate` la réponse reprend l'id dans la forme du contrat.
   await page.evaluate(() => { window.hote.send({ gfs: 0, type: 'appel', id: 45, nom: 'supprimer', args: { fichier: { id: 9, type: 'formulaire' }, raison: 'corbeille' } }); window.hote.send({ gfs: 0, type: 'appel', id: 46, nom: 'dupliquer', args: { fichier: { id: 9, type: 'formulaire' }, nom: 'Inscription (1)' } }); });
   const unknownFile = await until(() => fromApp(page, data => data && (data.id === 45 || data.id === 46)).then(found => (found.length >= 2 ? found : null)));

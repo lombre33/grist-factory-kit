@@ -292,6 +292,52 @@ test('`fermer` sans abonné reçoit `GFS_INCONNU` : l\'app part comme avant ; se
   first();
 });
 
+const stay = (fake, id, args = { raison: 'explorateur' }) => fake.deliver({ gfs: 0, type: 'appel', ...(id === undefined ? {} : { id }), nom: 'rester', args });
+
+test('`rester` : l\'abonné reçoit la raison ; vrai dit que l\'app a repris, tout le reste dit qu\'elle n\'a rien repris, et la réponse reprend l\'`id`', async () => {
+  const { fake, link } = await hosted();
+  const asked = [];
+  const answers = [true, false, undefined, 'oui'];
+  link.onStay(request => { asked.push(request); return Promise.resolve(answers.shift()); });
+  [51, 52, 53, 54].forEach(id => stay(fake, id));
+  await tick();
+  assert.deepEqual(asked, Array(4).fill({ raison: 'explorateur' }));
+  const replies = fake.sent.map(entry => entry.message).filter(message => [51, 52, 53, 54].includes(message.id));
+  assert.deepEqual(replies.map(reply => [reply.id, reply.type, reply.data.repris]), [[51, 'reponse', true], [52, 'reponse', false], [53, 'reponse', false], [54, 'reponse', false]],
+    'seul `true` dit « repris » : rien d\'autre ne reprend');
+});
+
+test('`rester` : une raison qui n\'est pas du texte devient vide, une erreur part avec son texte, et `fermer` et `rester` ne se mélangent pas', async () => {
+  const { fake, link } = await hosted();
+  const stayed = [];
+  const closed = [];
+  link.onClose(request => { closed.push(request.raison); return true; });
+  link.onStay((request) => { stayed.push(request.raison); if (request.raison === 'casse') throw new Error('Reprise refusée'); return true; });
+  stay(fake, 60, { raison: 42 });
+  stay(fake, 61, null);
+  close(fake, 62, { raison: 'app' });
+  await tick();
+  assert.deepEqual(stayed, ['', '']);
+  assert.deepEqual(closed, ['app']);
+  const warnings = await quietly(async () => { stay(fake, 63, { raison: 'casse' }); await tick(); });
+  assert.deepEqual(fake.sent.at(-1).message, { gfs: 0, id: 63, type: 'erreur', message: 'Reprise refusée' });
+  assert.match(warnings.join('\n'), /reprise demandée par GFS en échec/);
+});
+
+test('`rester` sans abonné reçoit `GFS_INCONNU` (l\'app n\'a rien arrêté qu\'elle sache) ; se désabonner y revient ; un abonné à `fermer` seul ne répond pas à `rester`', async () => {
+  const { fake, link } = await hosted();
+  link.onClose(() => true);
+  stay(fake, 70);
+  assert.deepEqual([fake.sent.at(-1).message.type, fake.sent.at(-1).message.code], ['erreur', 'GFS_INCONNU']);
+  const off = link.onStay(() => true);
+  stay(fake, 71);
+  await tick();
+  assert.equal(fake.sent.at(-1).message.data.repris, true);
+  off();
+  stay(fake, 72);
+  assert.equal(fake.sent.at(-1).message.code, 'GFS_INCONNU');
+});
+
 test('`fermer` ne vient que du cadre parent : un autre cadre n\'obtient aucun appel d\'abonné', async () => {
   const { fake, link } = await hosted();
   let called = 0;
