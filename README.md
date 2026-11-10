@@ -196,7 +196,7 @@ startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le mêm
 Une app ne garde plus ses bibliothèques à cinq endroits (la carte d'importation, la politique de sécurité, les empreintes écrites dans ses fichiers, le miroir des essais, la liste du miroir) : une seule liste, le **`package.json` à la racine de l'app** (versions exactes, et une section `gfs`), et un outil qui en tire le reste. Seule règle : une version ne s'écrit qu'une fois, dans `dependencies`.
 
 ```sh
-node kit/outils/bibliotheques.mjs                 # catalogue des adresses et des empreintes, carte d'importation, script-src d'index.html (réseau seulement pour une adresse hors npm : sa première empreinte)
+node kit/outils/bibliotheques.mjs                 # catalogue des adresses et des empreintes (reportées dans le code), carte d'importation, script-src d'index.html (réseau seulement pour une adresse hors npm : sa première empreinte)
 node kit/outils/bibliotheques.mjs --paquets <d>   # idem, les paquets npm lus dans des archives <paquet>-<version>.tgz (hors ligne)
 node kit/outils/bibliotheques.mjs --verifier      # relit les fichiers commités, sans réseau : la liste, le catalogue, la carte, la politique ; code de sortie 1 au moindre écart
 node kit/outils/bibliotheques.mjs --verifier-cdn  # idem, puis compare le catalogue à ce que les CDN servent (octets, en-tête CORS, type JavaScript)
@@ -207,6 +207,7 @@ Ce que la liste dit (`outils/bibliotheques/app.mjs`, `carte.mjs` et `miroir.mjs`
 
 - **`gfs.bibliotheques`** : un fichier chargé par page, soit `{ paquet, fichier }` (un fichier de paquet npm, servi par jsDelivr : l'empreinte se prend sur l'archive npm), soit `{ paquet, src }` (l'adresse d'un autre CDN, qui doit nommer la version exacte ; son empreinte se prend sur le CDN une fois, puis le catalogue la garde tant que l'adresse ne change pas). Le catalogue (`bibliotheques/catalogue.json`) en est tiré : l'app y lit l'adresse et l'empreinte de chaque script au lieu de les écrire dans ses fichiers.
 - **`gfs.politique.scriptSrc`** : ce que l'app écrit à la main dans `script-src` (`'self'`, `'unsafe-eval'` que l'API de Grist exige, les adresses que GFS donne aux extensions). L'outil y ajoute les adresses du catalogue et **l'empreinte de chaque script en ligne**, la carte d'importation comprise ; les autres directives de la balise restent telles que l'app les a écrites. La balise et ses directives, l'app les écrit une fois.
+- **`gfs.code`** : `{ "dossiers": ["js"] }` : les dossiers dont le code écrit `{ src: '…', integrity: '…' }` à côté d'une adresse de CDN ; l'outil y reporte l'empreinte du catalogue, `--verifier` la compare, et une adresse écrite avec une empreinte sans être dans la liste est refusée.
 - **`gfs.carte`** : la carte d'importation (`<script type="importmap">`), écrite d'après la liste : chaque version est celle de `dependencies`, les instances uniques (ProseMirror) et leurs sous-chemins sont dits une fois. Elle change, son empreinte change, et la politique la cite dans la même passe.
 - **`gfs.miroir`** : où poser le miroir des essais et quels fichiers y copier.
 
@@ -238,7 +239,7 @@ Ce que l'outil ne fait pas encore : la copie vendorisée d'une app (CDN par déf
 | `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |
 | `js/synchro/index.js` | `startEngine({ port, prefix })`, `ENGINE_VERSION`, `PORT_SHAPE`, `TABLE_PREFIX_RULE` : le moteur de partage entre documents (ci-dessus). Ses dossiers : `logic/` (la décision, sans effet), `source/` et `target/` (l'envoi et la réception), `acl.js`, `pages.js`, `exchange.js`, `form-link.js`, `errors.js`. |
 | `js/synchro/textes.js` | `TEXTES` : les textes `error.*`, `diag.*` et `recv.*` que le moteur demande à son hôte, en français et en anglais. |
-| `outils/bibliotheques.mjs` | L'outil des bibliothèques d'une app (ci-dessus) ; `outils/bibliotheques/` : `app.mjs` (la liste, le catalogue, la politique), `carte.mjs` (la carte d'importation), `miroir.mjs` (le miroir des essais), `primitives.mjs` (l'empreinte, un fichier de paquet, la comparaison au CDN, que l'outil de GFS reprend). Un outil de développement : aucune page ne le charge. |
+| `outils/bibliotheques.mjs` | L'outil des bibliothèques d'une app (ci-dessus) ; `outils/bibliotheques/` : `app.mjs` (la liste, le catalogue, la politique), `carte.mjs` (la carte d'importation), `empreintes.mjs` (les empreintes du code), `miroir.mjs` (le miroir des essais), `primitives.mjs` (l'empreinte, un fichier de paquet, la comparaison au CDN, que l'outil de GFS reprend). Un outil de développement : aucune page ne le charge. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
 

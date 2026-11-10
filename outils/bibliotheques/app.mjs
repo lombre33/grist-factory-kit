@@ -1,6 +1,7 @@
 // L'outil des bibliothèques d'une app (cahier 4.7, étape 4). Une seule liste : le `package.json` à la racine de l'app (versions exactes, et une section `gfs`), d'où il tire, sans rien écrire à la main :
 //   - le catalogue (bibliotheques/catalogue.json) : l'adresse de CDN et l'empreinte de chaque fichier que l'app charge ;
 //   - la carte d'importation de la page (`<script type="importmap">` d'index.html), quand la liste en déclare une (carte.mjs) ;
+//   - les empreintes que le code de l'app écrit à côté des adresses qu'il charge (`src: '…', integrity: '…'`), reportées depuis le catalogue (empreintes.mjs) ;
 //   - la politique de sécurité de la page : le `script-src` de la balise `<meta http-equiv="Content-Security-Policy">` d'index.html (les adresses du catalogue et l'empreinte de chaque script en ligne,
 //     la carte d'importation comprise) ; les autres directives restent telles que l'app les a écrites.
 // La liste d'une app :
@@ -17,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { EXACT_VERSION_RE, integrity, isPackagePath, packFile, checkCdn, fetchFile } from './primitives.mjs';
 import { readMap, importMapText, rewriteImportMap, checkImportMap } from './carte.mjs';
+import { readCodeSpec, writeLiterals, readLiterals } from './empreintes.mjs';
 
 export const JSDELIVR = 'https://cdn.jsdelivr.net/npm';
 const CATALOGUE = 'bibliotheques/catalogue.json';
@@ -211,13 +213,20 @@ export function checkPage(html, policy, catalogue, mapText = null) {
   return [...problems, ...scriptSrcProblems(mapText === null ? html : rewriteImportMap(html, mapText), policy, catalogue)];
 }
 
-// Écrit le catalogue puis la page de `root` d'après sa liste.
+function reportLiterals({ changed, unknown }, log) {
+  log(`code : ${changed.length ? `${changed.length} fichier(s) réécrit(s) (${changed.join(', ')})` : 'empreintes inchangées'}\n`);
+  if (unknown.length) throw new Error(`des adresses sont écrites avec une empreinte sans être dans la liste (gfs.bibliotheques) :\n  - ${unknown.join('\n  - ')}`);
+}
+
+// Écrit le catalogue, les empreintes du code, puis la page de `root` d'après sa liste.
 export async function generate(root, options = {}, log = text => process.stdout.write(text)) {
   const packageJson = readJson(root, 'package.json');
   if (!packageJson.gfs) throw new Error('package.json : pas de section « gfs » (la liste de l\'app : bibliotheques, page, politique, carte, miroir ; outils/bibliotheques/app.mjs la décrit)');
   const map = readMap(packageJson);
   const entries = await generateCatalogue(root, options);
   log(`catalogue : ${entries.length} fichier(s)\n`);
+  const code = readCodeSpec(packageJson);
+  if (code) reportLiterals(writeLiterals(root, code, { bibliotheques: entries }), log);
   const policy = readPolicy(packageJson);
   if ((policy.fixed === null && map === null) || !existsSync(join(root, policy.page))) return;
   const html = readFileSync(join(root, policy.page), 'utf8');
@@ -231,6 +240,8 @@ export function verify(root) {
   const packageJson = readJson(root, 'package.json');
   const catalogue = readJson(root, CATALOGUE);
   const problems = checkCatalogue(catalogue, readAppList(packageJson));
+  const code = readCodeSpec(packageJson);
+  if (code) problems.push(...readLiterals(root, code, catalogue));
   const policy = readPolicy(packageJson);
   const map = readMap(packageJson);
   if (policy.fixed !== null || map !== null) problems.push(...checkPage(readFileSync(join(root, policy.page), 'utf8'), policy, catalogue, map && importMapText(map)).map(problem => `${policy.page} : ${problem}`));

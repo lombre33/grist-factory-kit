@@ -2,6 +2,14 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.16.0 : les empreintes écrites dans le code d'une app suivent le catalogue (10/11/2026)
+
+Suite de l'outil des bibliothèques d'une app (0.15.0). Un chargeur de scripts écrit souvent, à côté de l'adresse d'une bibliothèque qu'il charge à la demande, son empreinte (`{ src: 'https://…', integrity: 'sha384-…' }`) : c'était un deuxième endroit à tenir à la main.
+
+- **`gfs.code.dossiers`** de la liste (par exemple `["js", "extensions"]`) : l'outil lit les fichiers `.js` et `.mjs` de ces dossiers, reporte dans chaque paire `src` / `integrity` l'empreinte du catalogue, et `--verifier` dit tout écart. Une adresse écrite avec une empreinte qui n'est pas dans la liste arrête l'outil (une bibliothèque cachée), il ne la devine pas. Sans `gfs.code`, rien n'est lu.
+- **Essais** : 5 de plus (`test/bibliotheques-empreintes.test.mjs`).
+- **Mesuré sur la copie de Publipostage+ (`ac9b86d`)** : les neuf paires `src` / `integrity` de son code (sept fichiers) sont celles du catalogue (« empreintes inchangées ») ; une empreinte abîmée est dite par `--verifier`, puis remise par l'outil.
+
 ## 0.15.0 : l'outil de la liste unique des bibliothèques d'une app (10/11/2026)
 
 Étape 4 du plan de GFS (cahier, 4.7 et 10) : une app ne tient plus ses bibliothèques à cinq endroits. Rien ne change pour une app qui ne l'emploie pas ; aucune page ne charge cet outil (Node, développement).
