@@ -2,6 +2,17 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.15.0 : l'outil de la liste unique des bibliothèques d'une app (10/11/2026)
+
+Étape 4 du plan de GFS (cahier, 4.7 et 10) : une app ne tient plus ses bibliothèques à cinq endroits. Rien ne change pour une app qui ne l'emploie pas ; aucune page ne charge cet outil (Node, développement).
+
+- **`outils/bibliotheques.mjs`** (depuis la racine de l'app : `node kit/outils/bibliotheques.mjs`) : d'après le `package.json` de l'app (versions exactes, section `gfs`), il écrit le **catalogue** (`bibliotheques/catalogue.json` : l'adresse de CDN et l'empreinte sha384 de chaque script), la **carte d'importation** d'`index.html`, et le **`script-src`** de sa politique de sécurité (les adresses du catalogue et l'empreinte de chaque script en ligne, la carte comprise : elle change, son empreinte est réécrite dans la même passe). `--verifier` relit tout sans réseau, `--verifier-cdn` compare au CDN réel, `--miroir` refait le miroir des essais, `--paquets <dossier>` travaille hors ligne.
+- **Un fichier de paquet npm** (jsDelivr le sert octet pour octet) : l'empreinte se prend sur l'archive npm. **Un fichier d'un autre CDN** (cdnjs) : sur le CDN, une fois ; le catalogue garde ensuite l'empreinte tant que l'adresse ne change pas. L'adresse doit nommer la version exacte de la liste.
+- **`outils/bibliotheques/primitives.mjs`** : l'empreinte, un fichier de paquet, la comparaison au CDN (octets, CORS, type JavaScript). L'outil de GFS pour sa liste d'extensions les reprend.
+- **Essais** : 24 de plus (`test/bibliotheques-app.test.mjs`, `-carte.test.mjs`, `-miroir.test.mjs`) : la liste, le catalogue, l'écriture et la vérification de la politique et de la carte, le miroir, avec un faux `npm install`.
+- **Mesuré sur une copie de Publipostage+ (`ac9b86d`)** : sa politique (mêmes sources, mêmes trois empreintes de scripts en ligne), sa carte (52 entrées, mêmes valeurs), et son miroir (55 modules ES, 13 fichiers, `esm-map.json`) se refont depuis la seule liste ; le miroir est identique, octet pour octet, à celui que son `build.mjs` construit. L'empreinte de `docx` calculée sur l'archive npm est celle qu'elle écrit à la main.
+- **Pas encore là** : la copie vendorisée d'une app (le CDN reste le défaut) et les fichiers assemblés des extensions (ils restent dans l'outil de GFS).
+
 ## 0.14.0 : le moteur de partage 2.1.0, avec ses enchaînements sans fenêtre et son REST écrit une fois (09/11/2026)
 
 Sync+ a livré les consignes 003, 004 et 005 de GFS (`09143dd`, moteur **2.0.0**, puis `3447b9f`, moteur **2.1.0**) : la copie du kit passe de 1.0.0 à **2.1.0** (Sync+ `e7054cc`).

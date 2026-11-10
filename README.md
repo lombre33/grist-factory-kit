@@ -191,6 +191,27 @@ startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le mêm
 - **Les essais** (`test/synchro-*.test.mjs`, 28 fichiers) sont ceux de Sync+ pour son moteur (sauf les trois qui lisent un de ses écrans), dont un passage complet sur un Grist en mémoire (`test/synchro-fake.mjs`) ; `test/synchro-i18n.mjs` tient la place de son `format` de textes.
 - **Mettre à jour la copie** : `node outils/reprendre-synchro.mjs <dépôt de Sync+>`, puis les essais, puis une ligne au journal. Seul GFS le fait ; les corrections qu'il y apporte, il les dit à Sync+ (sa page d'état), qui reprend la version du kit.
 
+## Les bibliothèques d'une app : la liste unique et son outil
+
+Une app ne garde plus ses bibliothèques à cinq endroits (la carte d'importation, la politique de sécurité, les empreintes écrites dans ses fichiers, le miroir des essais, la liste du miroir) : une seule liste, le **`package.json` à la racine de l'app** (versions exactes, et une section `gfs`), et un outil qui en tire le reste. Seule règle : une version ne s'écrit qu'une fois, dans `dependencies`.
+
+```sh
+node kit/outils/bibliotheques.mjs                 # catalogue des adresses et des empreintes, carte d'importation, script-src d'index.html (réseau seulement pour une adresse hors npm : sa première empreinte)
+node kit/outils/bibliotheques.mjs --paquets <d>   # idem, les paquets npm lus dans des archives <paquet>-<version>.tgz (hors ligne)
+node kit/outils/bibliotheques.mjs --verifier      # relit les fichiers commités, sans réseau : la liste, le catalogue, la carte, la politique ; code de sortie 1 au moindre écart
+node kit/outils/bibliotheques.mjs --verifier-cdn  # idem, puis compare le catalogue à ce que les CDN servent (octets, en-tête CORS, type JavaScript)
+node kit/outils/bibliotheques.mjs --miroir        # refait le miroir des essais (jamais commité) : les paquets aux versions de la liste, les modules ES de la carte, les fichiers que les essais lisent
+```
+
+Ce que la liste dit (`outils/bibliotheques/app.mjs`, `carte.mjs` et `miroir.mjs` décrivent chaque clé en tête de fichier) :
+
+- **`gfs.bibliotheques`** : un fichier chargé par page, soit `{ paquet, fichier }` (un fichier de paquet npm, servi par jsDelivr : l'empreinte se prend sur l'archive npm), soit `{ paquet, src }` (l'adresse d'un autre CDN, qui doit nommer la version exacte ; son empreinte se prend sur le CDN une fois, puis le catalogue la garde tant que l'adresse ne change pas). Le catalogue (`bibliotheques/catalogue.json`) en est tiré : l'app y lit l'adresse et l'empreinte de chaque script au lieu de les écrire dans ses fichiers.
+- **`gfs.politique.scriptSrc`** : ce que l'app écrit à la main dans `script-src` (`'self'`, `'unsafe-eval'` que l'API de Grist exige, les adresses que GFS donne aux extensions). L'outil y ajoute les adresses du catalogue et **l'empreinte de chaque script en ligne**, la carte d'importation comprise ; les autres directives de la balise restent telles que l'app les a écrites. La balise et ses directives, l'app les écrit une fois.
+- **`gfs.carte`** : la carte d'importation (`<script type="importmap">`), écrite d'après la liste : chaque version est celle de `dependencies`, les instances uniques (ProseMirror) et leurs sous-chemins sont dits une fois. Elle change, son empreinte change, et la politique la cite dans la même passe.
+- **`gfs.miroir`** : où poser le miroir des essais et quels fichiers y copier.
+
+Ce que l'outil ne fait pas encore : la copie vendorisée d'une app (CDN par défaut, vendorisé seulement si le RSSI d'un client l'exige) et les fichiers assemblés des extensions (ils restent à GFS). Les essais : `test/bibliotheques-*.test.mjs`.
+
 ## Ce que contient le kit
 
 | Fichier | Ce qu'il donne |
@@ -217,6 +238,7 @@ startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le mêm
 | `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |
 | `js/synchro/index.js` | `startEngine({ port, prefix })`, `ENGINE_VERSION`, `PORT_SHAPE`, `TABLE_PREFIX_RULE` : le moteur de partage entre documents (ci-dessus). Ses dossiers : `logic/` (la décision, sans effet), `source/` et `target/` (l'envoi et la réception), `acl.js`, `pages.js`, `exchange.js`, `form-link.js`, `errors.js`. |
 | `js/synchro/textes.js` | `TEXTES` : les textes `error.*`, `diag.*` et `recv.*` que le moteur demande à son hôte, en français et en anglais. |
+| `outils/bibliotheques.mjs` | L'outil des bibliothèques d'une app (ci-dessus) ; `outils/bibliotheques/` : `app.mjs` (la liste, le catalogue, la politique), `carte.mjs` (la carte d'importation), `miroir.mjs` (le miroir des essais), `primitives.mjs` (l'empreinte, un fichier de paquet, la comparaison au CDN, que l'outil de GFS reprend). Un outil de développement : aucune page ne le charge. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
 
@@ -240,7 +262,7 @@ Prévu au plan de GFS (cahier, 4.5), pas encore dans le kit, parce que le premie
 ## Contrôles
 
 ```sh
-npm test                    # 187 essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, ambiance, calendrier, hygiène du code
+npm test                    # les essais sous Node : traduction, jetons et contrastes, lien avec GFS, sélecteur de couleur, ambiance, calendrier, moteur de partage, outil des bibliothèques, hygiène du code
 npm run test:fuseaux        # les essais du calendrier sous trois fuseaux (Paris, Los Angeles, Auckland) : un changement d'heure ne décale jamais un jour
 npm run test:navigateur     # Chromium (Playwright), 700 × 400, souris et clavier, clair et sombre, français et anglais
 KIT_ONLY=couleur npm run test:navigateur   # seulement les essais dont le nom contient « couleur » (ou « calendrier »)
