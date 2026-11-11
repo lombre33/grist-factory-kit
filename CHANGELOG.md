@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.18.0 : `GfsLink.native(id)`, la copie figée d'une bibliothèque native (11/11/2026)
+
+Demande d'Antoine (10/11) : pour chaque bibliothèque d'une app, le CDN ou une copie figée au choix dans la fenêtre « Apps et extensions » de GFS, Publipostage+ compris. Les copies des bibliothèques natives sont chez GFS (`vendor/`, choix du 11/11) ; GFS dit à l'app lesquelles la personne a choisies (contrats 5.2, point 12).
+
+- **`GfsLink.native(id)`** rend `{ version, src, integrite, forme }` pour une bibliothèque native que la personne a mise en copie figée, `null` sinon (le CDN de l'app vaut : seule, ou sans choix). Une entrée sans version, sans adresse ou sans empreinte est ignorée.
+- **L'app compare `version`** à celle de sa liste avant de prendre l'adresse : GFS peut garder une copie plus ancienne que la liste de l'app, qui retombe alors sur son CDN.
+- **`onExtensions(fn)`** est aussi appelé quand seule une copie figée change (même liste d'extensions).
+- **Essais** : 1 de plus (`test/gfs-link.test.mjs`), échoue sur le code d'avant. Rien ne change pour une app qui n'appelle pas `native`.
+
 ## 0.17.0 : le moteur de partage 2.6.0, repris de Sync+ (11/11/2026)
 
 Sync+ a livré depuis la 0.14.0 les moteurs **2.2.0 à 2.6.0** (`1cd6f0d` à `e3c7953`, sommet de sa page `c631cfa`) : la copie du kit passe de 2.1.0 à **2.6.0**. Aucun nom du port ne change (`createRestPort` rend toujours ses vingt noms, dans le même ordre) : un hôte qui prenait son port de `createRestPort` n'a rien à écrire.

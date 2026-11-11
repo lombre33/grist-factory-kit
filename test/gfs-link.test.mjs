@@ -170,6 +170,28 @@ test('événements : chaque abonné une fois par vrai changement, avec sa copie 
   assert.equal(link.bar(), null);
 });
 
+test('natives : la copie figée choisie, avec sa version ; une entrée mal formée est ignorée ; un changement est un événement (5.2, point 12)', async () => {
+  const docx = { version: '9.15.1', src: 'https://gfs.example/vendor/docx/9.15.1/docx.js', integrite: 'sha384-abc', forme: 'module' };
+  const pdfmake = { version: '0.2.7', src: 'https://gfs.example/vendor/pdfmake/0.2.7/pdfmake.js', integrite: 'sha384-def' };
+  const { fake, link } = await hosted({ ...CONTEXT, natives: { docx, pdfmake, 'Pas-Un-Id': docx, sansVersion: { src: docx.src, integrite: docx.integrite }, sansSrc: { version: '1.0.0', integrite: 'sha384-x' }, vide: { version: '', src: 'a', integrite: 'b' } } });
+  assert.deepEqual(link.native('docx'), docx);
+  assert.deepEqual(link.native('pdfmake'), { ...pdfmake, forme: 'script' }, 'sans `forme`, un script classique');
+  assert.deepEqual(['Pas-Un-Id', 'sansVersion', 'sansSrc', 'vide', 'jamais-vu'].map(id => link.native(id)), [null, null, null, null, null]);
+  link.native('docx').src = 'https://autre.example/x.js';
+  assert.equal(link.native('docx').src, docx.src, 'ce que le lien rend est une copie');
+  const seen = [];
+  link.onExtensions(value => seen.push(value));
+  const event = data => fake.deliver({ gfs: 0, type: 'evenement', nom: 'extensions', data });
+  event({ extensions: ['edition'], bibliotheques: CONTEXT.bibliotheques, natives: { docx, pdfmake } });
+  assert.equal(seen.length, 0, 'rien n\'a changé : pas d\'événement');
+  event({ extensions: ['edition'], bibliotheques: CONTEXT.bibliotheques, natives: { docx } });
+  assert.equal(seen.length, 1, 'une copie de moins : les abonnés le savent');
+  assert.equal(link.native('pdfmake'), null);
+  event({ extensions: ['edition'], bibliotheques: CONTEXT.bibliotheques });
+  assert.equal(seen.length, 2, 'un GFS qui ne parle plus de `natives` : plus aucune copie figée, le CDN de l\'app vaut');
+  assert.equal(link.native('docx'), null);
+});
+
 test('un abonné qui échoue n\'empêche pas les suivants', async () => {
   const { fake, link } = await hosted();
   const seen = [];

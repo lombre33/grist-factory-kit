@@ -13,6 +13,7 @@
 //   GfsLink.ambiance(), GfsLink.onAmbiance(fn)   // l'ambiance et la couleur que la personne a choisies pour GFS et ses apps (js/ambiance-message.js), ou null : rien n'est choisi (5.2 point 10) ; js/ambiance.js la pose
 //   GfsLink.storageGet(clé), GfsLink.storageSet(clé, texte | null)   // les choix de la personne : chez GFS (le cadre n'a pas de stockage à lui, 5.3), dans le navigateur seule
 //   GfsLink.extensions(), GfsLink.library(id), GfsLink.onExtensions(fn), GfsLink.install(id)   // les extensions actives, la source de leurs bibliothèques (5.2 point 4, 5.4)
+//   GfsLink.native(id)                           // { version, src, integrite, forme } : la copie figée que GFS sert pour une bibliothèque native de l'app (choix de la personne), ou null : le CDN de l'app (5.2 point 12)
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
 //   GfsLink.openFile({ app, id, type })          // GFS ouvre ce fichier dans son app : { ouvert } ; dans une autre app que celle-ci, elle prend la place de celle-ci (5.4, point 7)
 //   GfsLink.deposit({ fichier, nom, type?, lot?, suivants?, dossier? })   // GFS garde ce fichier que l'app vient de fabriquer (un export en PDF) : { statut, id, nom } (5.4, point 9)
@@ -133,6 +134,18 @@ function normalizeLibraries(raw) {
   return found;
 }
 
+// `natives` (5.2, point 12) : pour chaque bibliothèque native de l'app que la personne a mise en copie figée, { version, src, integrite, forme } ; les autres n'y sont pas (le CDN de l'app vaut).
+// L'app compare `version` à celle de sa liste avant d'en prendre l'adresse : une copie d'une autre version ne vaut pas la sienne.
+function normalizeNatives(raw) {
+  const found = new Map();
+  for (const [id, lib] of Object.entries(isObject(raw) ? raw : {})) {
+    if (ID.test(id) && isObject(lib) && ['version', 'src', 'integrite'].every(key => typeof lib[key] === 'string' && lib[key])) {
+      found.set(id, { version: lib.version, src: lib.src, integrite: lib.integrite, forme: lib.forme === 'module' ? 'module' : 'script' });
+    }
+  }
+  return found;
+}
+
 // Chaque abonné reçoit sa propre copie de la valeur ; un abonné qui échoue n'empêche pas les suivants.
 function notify(listeners, value) {
   for (const listener of [...listeners]) {
@@ -170,9 +183,11 @@ function setAmbiance(link, raw) {
 function setExtensions(link, data) {
   const extensions = normalizeExtensions(data.extensions);
   const libraries = normalizeLibraries(data.bibliotheques);
-  if (same([extensions, [...libraries]], [link.extensions, [...link.libraries]])) return;
+  const natives = normalizeNatives(data.natives);
+  if (same([extensions, [...libraries], [...natives]], [link.extensions, [...link.libraries], [...link.natives]])) return;
   link.extensions = extensions;
   link.libraries = libraries;
+  link.natives = natives;
   notify(link.listeners.extensions, () => extensions.slice());
 }
 
@@ -467,7 +482,7 @@ function newLink(host) {
   const contract = framed ? hostContract(host.location && host.location.search) : null;
   return {
     host, contract, hosted: contract !== null, known: false, nextId: 1,
-    context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, storage: null, extensions: [], libraries: new Map(),
+    context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, storage: null, extensions: [], libraries: new Map(), natives: new Map(),
     listeners: { language: new Set(), bar: new Set(), identity: new Set(), ambiance: new Set(), extensions: new Set() },
     pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null, stayHandler: null, deleteHandler: null, copyHandler: null,
   };
@@ -497,6 +512,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     ambiance: () => copy(link.ambiance),
     extensions: () => link.extensions.slice(),
     library: id => copy(link.libraries.get(id)),
+    native: id => copy(link.natives.get(id)),
     storageGet: key => storageGet(link, key),
     storageSet: (key, value) => storageSet(link, key, value),
     hideBar: hidden => hideBar(link, hidden),
