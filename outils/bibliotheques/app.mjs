@@ -234,7 +234,7 @@ export async function generate(root, options = {}, log = text => process.stdout.
   const policy = readPolicy(packageJson);
   if ((policy.fixed === null && map === null) || !existsSync(join(root, policy.page))) return;
   const html = readFileSync(join(root, policy.page), 'utf8');
-  const next = rewritePage(html, policy, { bibliotheques: entries }, map && importMapText(map), readCopy(packageJson));
+  const next = rewritePage(html, policy, { bibliotheques: entries }, map && importMapText(map), readCopy(packageJson, root));
   if (next !== html) writeFileSync(join(root, policy.page), next);
   log(`${policy.page} : ${next === html ? 'inchangée' : 'réécrite'}\n`);
 }
@@ -248,7 +248,7 @@ export function verify(root) {
   if (code) problems.push(...readLiterals(root, code, catalogue));
   const policy = readPolicy(packageJson);
   const map = readMap(packageJson);
-  const copy = readCopy(packageJson);
+  const copy = readCopy(packageJson, root);
   if (policy.fixed !== null || map !== null) problems.push(...checkPage(readFileSync(join(root, policy.page), 'utf8'), policy, catalogue, map && importMapText(map), copy).map(problem => `${policy.page} : ${problem}`));
   if (copy) problems.push(...checkCopyFolder(root, copy));
   return { catalogue, problems };

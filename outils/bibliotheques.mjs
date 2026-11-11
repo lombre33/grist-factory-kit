@@ -6,7 +6,7 @@
 //   node kit/outils/bibliotheques.mjs --verifier            relit les fichiers commités, sans réseau : liste, catalogue, politique ; code de sortie 1 au moindre écart
 //   node kit/outils/bibliotheques.mjs --verifier-cdn        idem, puis compare le catalogue à ce que les CDN servent vraiment (réseau) : octets, en-tête CORS, type JavaScript
 //   node kit/outils/bibliotheques.mjs --miroir             refait le miroir des essais (gfs.miroir de la liste) : les paquets npm aux versions de la liste, les modules ES de la carte, les fichiers que les essais lisent (réseau : npm)
-//   node kit/outils/bibliotheques.mjs --copies             refait la copie figée de la fonction que la liste déclare (gfs.copie) : les modules ES de la carte construits dans le dossier de l'app, avec leurs licences (réseau : npm)
+//   node kit/outils/bibliotheques.mjs --copies             refait la copie figée de la fonction que la liste déclare (gfs.copie) : les modules ES de la carte construits dans le dossier de l'app, avec leurs licences (réseau : npm), puis la page comme sans option
 //   --racine <dossier>                                      l'app à traiter (le dossier courant par défaut)
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -29,8 +29,8 @@ async function main(argv) {
     return;
   }
   if (argv.includes('--miroir')) { await buildMirror(root, JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))); return; }
-  if (argv.includes('--copies')) { await buildCopy(root, JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))); return; }
   const packages = option(argv, '--paquets');
+  if (argv.includes('--copies')) { await buildCopy(root, JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))); await generate(root, { packagesDir: packages ? resolve(packages) : null }); return; }
   await generate(root, { packagesDir: packages ? resolve(packages) : null });
 }
 

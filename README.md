@@ -201,7 +201,7 @@ node kit/outils/bibliotheques.mjs --paquets <d>   # idem, les paquets npm lus da
 node kit/outils/bibliotheques.mjs --verifier      # relit les fichiers commités, sans réseau : la liste, le catalogue, la carte, la politique ; code de sortie 1 au moindre écart
 node kit/outils/bibliotheques.mjs --verifier-cdn  # idem, puis compare le catalogue à ce que les CDN servent (octets, en-tête CORS, type JavaScript)
 node kit/outils/bibliotheques.mjs --miroir        # refait le miroir des essais (jamais commité) : les paquets aux versions de la liste, les modules ES de la carte, les fichiers que les essais lisent
-node kit/outils/bibliotheques.mjs --copies        # refait la copie figée d'une fonction (gfs.copie), commitée dans le dépôt de l'app : les modules ES de la carte, leurs licences et le manifeste des empreintes (réseau : npm)
+node kit/outils/bibliotheques.mjs --copies        # refait la copie figée d'une fonction (gfs.copie), commitée dans le dépôt de l'app : les modules ES de la carte, leurs licences et le manifeste des empreintes (réseau : npm), puis la page
 ```
 
 Ce que la liste dit (`outils/bibliotheques/app.mjs`, `carte.mjs` et `miroir.mjs` décrivent chaque clé en tête de fichier) :

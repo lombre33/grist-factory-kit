@@ -234,6 +234,35 @@ test('buildCopy : le dossier de l\'app reçoit les modules, le morceau partagé,
   }
 });
 
+test('la carte de la copie porte le ?v= de chaque module d\'après son empreinte : sans copie construite, aucun ; construite, il change avec le fichier ; la page et la vérification suivent', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kit-copie-test-'));
+  try {
+    const packageJson = pkg();
+    assert.equal(readCopy(packageJson, root).files, null, 'avant la construction');
+    assert.equal(JSON.parse(copyMapText(readCopy(packageJson, root))).imports['@tiptap/core'], './vendor/editeur/tiptap__core.js', 'aucun ?v= sans copie construite');
+    await buildCopy(root, packageJson, { install: fakeInstall, loadEsbuild: fakeEsbuild }, () => {});
+    const built = readCopy(packageJson, root);
+    const first = JSON.parse(copyMapText(built)).imports;
+    assert.match(first['@tiptap/core'], /^\.\/vendor\/editeur\/tiptap__core\.js\?v=[0-9a-f]{8}$/);
+    assert.equal(first['kit/ambiance-pose'], './kit/js/ambiance-pose.js?v=1', 'les entrées fixes de l\'app sont telles qu\'elle les écrit');
+    const text = cdnText(packageJson);
+    const policy = { page: 'index.html', fixed: packageJson.gfs.politique.scriptSrc };
+    const page = rewritePage(PAGE, policy, { bibliotheques: [] }, text, built);
+    assert.deepEqual(checkPage(page, policy, { bibliotheques: [] }, text, built), []);
+    const rebuilt = fakeEsbuild();
+    const build = rebuilt.build;
+    rebuilt.build = async options => { const result = await build(options); writeFileSync(join(options.outdir, 'tiptap__core.js'), 'export const refait = 1;\n'); return result; };
+    await buildCopy(root, packageJson, { install: fakeInstall, loadEsbuild: () => rebuilt }, () => {});
+    const after = readCopy(packageJson, root);
+    const second = JSON.parse(copyMapText(after)).imports;
+    assert.notEqual(second['@tiptap/core'], first['@tiptap/core'], 'le module refait change d\'adresse');
+    assert.equal(second['prosemirror-model'], first['prosemirror-model'], 'celui qui n\'a pas changé garde la sienne');
+    assert.ok(checkPage(page, policy, { bibliotheques: [] }, text, after).some(problem => /changer dans la carte de la copie : @tiptap\/core/.test(problem)), 'la page d\'avant n\'est plus à jour');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('buildCopy : sans `gfs.copie` ou sans esbuild dans la liste, l\'outil le dit', async () => {
   await assert.rejects(buildCopy('/inexistant', { gfs: {} }), /ne déclare pas de copie/);
   const noEsbuild = pkg();

@@ -19,8 +19,15 @@ export const COPY_ID = 'gfs-carte-copie';
 const NAME_RE = /^[A-Za-z0-9_.-]+$/;
 const LICENCE_RE = /^(?:licen[cs]e|copying)(?:[-.].*)?$/i;
 
-// La déclaration de la copie, vérifiée ; `null` quand la liste n'en déclare pas.
-export function readCopy(packageJson) {
+// Les empreintes que le manifeste de la copie donne à ses fichiers ; `null` tant que la copie n'est pas construite.
+function manifestFiles(root, dossier) {
+  const file = join(root, dossier, FILES);
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).fichiers : null;
+}
+
+// La déclaration de la copie, vérifiée ; `null` quand la liste n'en déclare pas. Avec `root`, elle porte aussi les empreintes des fichiers déjà construits (`files`) : la carte de la copie en tire le `?v=`
+// de chaque module (GitHub Pages garde tout dix minutes : un module d'entrée refait garde son nom, il lui faut une adresse neuve).
+export function readCopy(packageJson, root = null) {
   const spec = packageJson.gfs && packageJson.gfs.copie;
   if (spec === undefined) return null;
   const carte = readMap(packageJson);
@@ -28,13 +35,20 @@ export function readCopy(packageJson) {
   if (!NAME_RE.test(spec.fonction || '')) throw new Error('gfs.copie.fonction : un identifiant attendu (lettres, chiffres, « - », « _ »)');
   if (!isPackagePath(spec.dossier) || spec.dossier.startsWith('node_modules')) throw new Error('gfs.copie.dossier : un dossier relatif à l\'app attendu');
   if (spec.cle !== undefined && !NAME_RE.test(spec.cle)) throw new Error('gfs.copie.cle : un nom de clé attendu (lettres, chiffres, « - », « _ »)');
-  return { fonction: spec.fonction, dossier: spec.dossier, prefixe: `./${spec.dossier}/`, cle: spec.cle === undefined ? null : spec.cle, modules: modulesOf(packageJson, spec, 'gfs.copie'), carte, deps: carte.deps };
+  return { fonction: spec.fonction, dossier: spec.dossier, prefixe: `./${spec.dossier}/`, cle: spec.cle === undefined ? null : spec.cle, modules: modulesOf(packageJson, spec, 'gfs.copie'), carte, deps: carte.deps, files: root === null ? null : manifestFiles(root, spec.dossier) };
+}
+
+// L'adresse d'un module de la copie : relative à la page, avec les huit premiers chiffres hexadécimaux de son empreinte quand la copie est construite.
+function moduleAddress(copy, name) {
+  const file = `${moduleName(name)}.js`;
+  const hash = copy.files && copy.files[file];
+  return `${copy.prefixe}${file}${hash ? `?v=${Buffer.from(hash.slice('sha384-'.length), 'base64').toString('hex').slice(0, 8)}` : ''}`;
 }
 
 // La carte de la copie : les entrées fixes de l'app (le kit), puis chaque module construit.
 export function copyMapText(copy) {
   const imports = { ...copy.carte.fixes };
-  for (const name of copy.modules) imports[name] = `${copy.prefixe}${moduleName(name)}.js`;
+  for (const name of copy.modules) imports[name] = moduleAddress(copy, name);
   return `\n${JSON.stringify({ imports }, null, 2)}\n`;
 }
 
