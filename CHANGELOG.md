@@ -2,6 +2,13 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.20.1 : le moteur de partage 2.6.1, repris de Sync+ (11/11/2026)
+
+Sync+ a livré le correctif **2.6.1** de l'audit qui précède sa Bêta (`7f0ce56`, sommet de sa page `5e4e38b`) : la copie du kit passe de 2.6.0 à **2.6.1**. Rien ne change pour une app : le port garde ses vingt noms dans le même ordre, le texte des formules de `Synchro` est le même (`test/synchro-formulas-golden.test.mjs`), aucune table ni colonne de plus.
+
+- **2.6.1** : `addEvent` (`js/synchro/logic/notes.js`) ne lève plus d'erreur quand l'historique d'une note SOURCE retouchée à la main n'est pas une liste : il repart d'une liste vide, et une note bien formée se lit et s'écrit comme avant. Cinq variables locales renommées (`logic/journal.js`, `logic/lost.js`, `logic/notes.js`, `source/estimate.js`, `source/resend.js`).
+- **Essais** : quatre fichiers d'essai repris à jour (`synchro-fake.mjs`, `synchro-moteur-links`, `synchro-moteur-lost`, `synchro-moteur-port`) ; les 293 des fichiers `test/synchro-*` et les 537 du kit sont verts.
+
 ## 0.20.0 : `--copies`, la copie figée d'une fonction rangée dans le dépôt de l'app (11/11/2026)
 
 Suite du choix du porteur (11/11, « Dans le dépôt de Publipostage+ ») : l'outil des bibliothèques construit la copie de l'éditeur (TipTap, ProseMirror) dans le dépôt de l'app et tient la page qui choisit entre elle et le CDN. Rien ne change pour une app qui ne déclare pas `gfs.copie`.

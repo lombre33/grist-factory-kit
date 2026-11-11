@@ -1,11 +1,11 @@
-> **Copie** du moteur de Sync+ (commit `c631cfa`, moteur 2.6.0), reprise par `outils/reprendre-synchro.mjs` : ne pas la modifier ici sans le dire à Sync+ (consignes/sync/ dans GFS). Les textes de l'hôte sont dans `textes.js`.
+> **Copie** du moteur de Sync+ (commit `5e4e38b`, moteur 2.6.1), reprise par `outils/reprendre-synchro.mjs` : ne pas la modifier ici sans le dire à Sync+ (consignes/sync/ dans GFS). Les textes de l'hôte sont dans `textes.js`.
 
 # Le moteur de Sync+ (`js/engine/`)
 
 Ce dossier crée, lit, écrit et décide ; il ne dessine rien. Les écrans (`js/source/`, `js/target/`, `js/ui.js`…)
 appellent le moteur, jamais l'inverse. Modules ES, sans bibliothèque ni étape de build.
 
-**Version du moteur : `ENGINE_VERSION` dans `version.js`** (2.2.0). Elle ne suit pas la version de Sync+ : elle
+**Version du moteur : `ENGINE_VERSION` dans `version.js`** (l'historique des versions y est aussi). Elle ne suit pas la version de Sync+ : elle
 change quand le moteur change ce qu'il attend du port, ce qu'il écrit dans les documents ou le sens d'un champ des
 codes (`CODE_FORMAT`). Majeure : un port, un nom de table ou un format qui ne se lisent plus comme avant.
 
