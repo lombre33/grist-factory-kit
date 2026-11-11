@@ -201,6 +201,7 @@ node kit/outils/bibliotheques.mjs --paquets <d>   # idem, les paquets npm lus da
 node kit/outils/bibliotheques.mjs --verifier      # relit les fichiers commités, sans réseau : la liste, le catalogue, la carte, la politique ; code de sortie 1 au moindre écart
 node kit/outils/bibliotheques.mjs --verifier-cdn  # idem, puis compare le catalogue à ce que les CDN servent (octets, en-tête CORS, type JavaScript)
 node kit/outils/bibliotheques.mjs --miroir        # refait le miroir des essais (jamais commité) : les paquets aux versions de la liste, les modules ES de la carte, les fichiers que les essais lisent
+node kit/outils/bibliotheques.mjs --copies        # refait la copie figée d'une fonction (gfs.copie), commitée dans le dépôt de l'app : les modules ES de la carte, leurs licences et le manifeste des empreintes (réseau : npm)
 ```
 
 Ce que la liste dit (`outils/bibliotheques/app.mjs`, `carte.mjs` et `miroir.mjs` décrivent chaque clé en tête de fichier) :
@@ -210,8 +211,9 @@ Ce que la liste dit (`outils/bibliotheques/app.mjs`, `carte.mjs` et `miroir.mjs`
 - **`gfs.code`** : `{ "dossiers": ["js"] }` : les dossiers dont le code écrit `{ src: '…', integrity: '…' }` à côté d'une adresse de CDN ; l'outil y reporte l'empreinte du catalogue, `--verifier` la compare, et une adresse écrite avec une empreinte sans être dans la liste est refusée.
 - **`gfs.carte`** : la carte d'importation (`<script type="importmap">`), écrite d'après la liste : chaque version est celle de `dependencies`, les instances uniques (ProseMirror) et leurs sous-chemins sont dits une fois. Elle change, son empreinte change, et la politique la cite dans la même passe.
 - **`gfs.miroir`** : où poser le miroir des essais et quels fichiers y copier.
+- **`gfs.copie`** : `{ fonction, dossier, sansEsm, cle }` (`outils/bibliotheques/copies.mjs`) : la copie figée, dans le dépôt de l'app, des modules ES de la carte (l'éditeur). `--copies` les construit d'un seul tenant et minifiés dans `dossier` avec `LICENCES.txt` et `COPIE.json` (version de chaque paquet lu, empreinte de chaque fichier) ; la page garde alors, à la place de sa carte, **les deux cartes (CDN et copie) en données et un petit script** qui pose l'une d'elles au démarrage : la copie quand l'adresse de la page dit `copie=<fonction>` (GFS l'y met, d'après le choix de la personne ; `GfsLink.copies()` le lit), le CDN sinon, ou la clé `cle` du stockage de l'app seule. La politique cite l'empreinte du script et celle du texte exact de chaque carte ; `--verifier` relit le bloc, les empreintes des fichiers de la copie et les versions de la liste.
 
-Ce que l'outil ne fait pas encore : la copie vendorisée d'une app (CDN par défaut, vendorisé seulement si le RSSI d'un client l'exige) et les fichiers assemblés des extensions (ils restent à GFS). Les essais : `test/bibliotheques-*.test.mjs`.
+Ce que l'outil ne fait pas encore : les fichiers assemblés des extensions (ils restent à GFS) ; la copie figée des bibliothèques *natives* d'une app n'est pas à lui non plus (elle est chez GFS : `GfsLink.native`). Les essais : `test/bibliotheques-*.test.mjs`.
 
 ## Ce que contient le kit
 
@@ -239,7 +241,7 @@ Ce que l'outil ne fait pas encore : la copie vendorisée d'une app (CDN par déf
 | `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |
 | `js/synchro/index.js` | `startEngine({ port, prefix })`, `ENGINE_VERSION`, `PORT_SHAPE`, `TABLE_PREFIX_RULE` : le moteur de partage entre documents (ci-dessus). Ses dossiers : `logic/` (la décision, sans effet), `source/` et `target/` (l'envoi et la réception), `acl.js`, `pages.js`, `exchange.js`, `form-link.js`, `errors.js`. |
 | `js/synchro/textes.js` | `TEXTES` : les textes `error.*`, `diag.*` et `recv.*` que le moteur demande à son hôte, en français et en anglais. |
-| `outils/bibliotheques.mjs` | L'outil des bibliothèques d'une app (ci-dessus) ; `outils/bibliotheques/` : `app.mjs` (la liste, le catalogue, la politique), `carte.mjs` (la carte d'importation), `empreintes.mjs` (les empreintes du code), `miroir.mjs` (le miroir des essais), `primitives.mjs` (l'empreinte, un fichier de paquet, la comparaison au CDN, que l'outil de GFS reprend). Un outil de développement : aucune page ne le charge. |
+| `outils/bibliotheques.mjs` | L'outil des bibliothèques d'une app (ci-dessus) ; `outils/bibliotheques/` : `app.mjs` (la liste, le catalogue, la politique), `carte.mjs` (la carte d'importation), `empreintes.mjs` (les empreintes du code), `miroir.mjs` (le miroir des essais), `copies.mjs` (la copie figée d'une fonction, rangée dans l'app), `primitives.mjs` (l'empreinte, un fichier de paquet, la comparaison au CDN, que l'outil de GFS reprend). Un outil de développement : aucune page ne le charge. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
 

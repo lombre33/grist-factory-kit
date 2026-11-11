@@ -2,6 +2,16 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.20.0 : `--copies`, la copie figée d'une fonction rangée dans le dépôt de l'app (11/11/2026)
+
+Suite du choix du porteur (11/11, « Dans le dépôt de Publipostage+ ») : l'outil des bibliothèques construit la copie de l'éditeur (TipTap, ProseMirror) dans le dépôt de l'app et tient la page qui choisit entre elle et le CDN. Rien ne change pour une app qui ne déclare pas `gfs.copie`.
+
+- **`node kit/outils/bibliotheques.mjs --copies`** : construit les modules ES de la carte d'un seul tenant (une seule instance de ProseMirror) et minifiés dans `gfs.copie.dossier`, avec `LICENCES.txt` (la licence de chaque paquet lu) et `COPIE.json` (version de chaque paquet, empreinte sha384 de chaque fichier). Refaite à l'identique tant que les versions de la liste ne changent pas (mesuré : deux constructions, aucun octet de différence). Mesuré sur Publipostage+ `ac9b86d` : 55 fichiers, 51 paquets, 760 Ko.
+- **La page à deux cartes** : l'outil remplace la carte d'importation écrite à la main par un bloc (la carte du CDN et celle de la copie, en données, et un script qui pose l'une des deux). La copie quand l'adresse de la page dit `copie=<fonction>` (c'est ce que `GfsLink.copies()` lit), sinon le CDN ; une clé facultative du stockage de l'app choisit la copie quand elle tourne seule. Une page n'a qu'une carte d'importation sous Firefox (faits 88) : d'où ce script, et `script-src` cite son empreinte et celle du texte exact de chaque carte (`'sha256-…'`), comme il citait celle de la carte d'avant.
+- **`--verifier`** relit en plus le bloc (carte du CDN, carte de la copie, script, aucune carte restée en dur à côté) et le dossier de la copie : un fichier absent, modifié ou en trop, une version de la liste que la copie n'a pas.
+- **Mesuré** (cadre isolé sans `allow-same-origin`, Firefox 160 et Chromium, politique de sécurité de Publipostage+ en place) : avec `copie=editeur`, 44 fichiers lus dans le dossier de la copie, aucun vers esm.sh, aucune violation de la politique, les 21 groupes de noms que l'éditeur de Publipostage+ importe tous présents, une seule instance de ProseMirror, un tableau inséré ; sans, la page demande esm.sh ; un texte de carte modifié d'un espace est refusé par la politique.
+- **Essais** : `test/bibliotheques-copies.test.mjs` (9), dont le script de choix exécuté dans une page factice (adresse, stockage refusé, adresse illisible).
+
 ## 0.19.0 : `GfsLink.copies()`, les fonctions dont la copie figée est rangée dans l'app (11/11/2026)
 
 Choix du porteur (11/11) : la copie de l'éditeur (TipTap, ProseMirror) est **dans le dépôt de Publipostage+**, pas chez GFS : sa « copie » est une carte d'importation que la page pose au démarrage, et une page n'en a qu'une (Firefox ignore la seconde). La page doit donc connaître le choix **avant** la réponse de GFS.

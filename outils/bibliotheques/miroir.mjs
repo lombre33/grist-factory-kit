@@ -35,10 +35,10 @@ function copiesOf(packageJson, deps, spec) {
 }
 
 // Les noms nus de la carte dont le miroir construit un module : ceux de `gfs.carte.paquets`, moins `sansEsm`.
-function modulesOf(packageJson, spec) {
+export function modulesOf(packageJson, spec, where = 'gfs.miroir') {
   const names = (packageJson.gfs.carte && packageJson.gfs.carte.paquets) || [];
   const without = spec.sansEsm || [];
-  for (const name of without) if (!names.includes(name)) throw new Error(`gfs.miroir.sansEsm : ${name} n'est pas dans la carte`);
+  for (const name of without) if (!names.includes(name)) throw new Error(`${where}.sansEsm : ${name} n'est pas dans la carte`);
   return names.filter(name => !without.includes(name));
 }
 
@@ -56,24 +56,31 @@ export function mirrorPlan(packageJson) {
 // Le nom d'un module construit : `@tiptap/core` devient `tiptap__core`.
 export const moduleName = name => name.replace('@', '').replace('/', '__');
 
-function installDeps(dir) {
+export function installDeps(dir) {
   execFileSync('npm', ['install', '--no-audit', '--no-fund', '--silent'], { cwd: dir, stdio: 'inherit' });
 }
 
-async function bundleEsm(dir, plan, esbuild) {
+export const loadEsbuildFrom = dir => createRequire(join(dir, 'x.js'))('esbuild');
+
+// Les modules ES de la carte, construits d'un seul tenant (`splitting`) dans `outdir` ; rend ce que `esbuild.build` rend (avec `metafile`, les fichiers lus, d'où l'on tire les licences d'une copie).
+export async function bundleModules(dir, names, esbuild, outdir, { metafile = false, minify = false } = {}) {
   const entries = {};
   mkdirSync(join(dir, 'entries'), { recursive: true });
-  for (const name of plan.esm) {
+  for (const name of names) {
     const file = join('entries', `${moduleName(name)}.js`);
     writeFileSync(join(dir, file), `export * from ${JSON.stringify(name)};\n`);
     entries[moduleName(name)] = join(dir, file);
   }
-  await esbuild.build({ entryPoints: entries, outdir: join(dir, 'esm'), bundle: true, splitting: true, format: 'esm', platform: 'browser', target: 'es2022', legalComments: 'none', logLevel: 'warning', absWorkingDir: dir });
+  return esbuild.build({ entryPoints: entries, outdir, bundle: true, splitting: true, format: 'esm', platform: 'browser', target: 'es2022', legalComments: 'none', logLevel: 'warning', absWorkingDir: dir, metafile, minify });
+}
+
+async function bundleEsm(dir, plan, esbuild) {
+  await bundleModules(dir, plan.esm, esbuild, join(dir, 'esm'));
   writeFileSync(join(dir, 'esm-map.json'), `${JSON.stringify(Object.fromEntries(plan.esm.map(name => [name, `${plan.prefixe}${moduleName(name)}.js`])), null, 2)}\n`);
 }
 
 // Refait le miroir de `root` : sa liste de paquets (`package.json` du miroir), `npm install`, les modules ES de la carte, les fichiers copiés. `install(dossier)` et `loadEsbuild(dossier)` sont injectés pour les essais.
-export async function buildMirror(root, packageJson, { install = installDeps, loadEsbuild = dir => createRequire(join(dir, 'x.js'))('esbuild') } = {}, log = text => process.stdout.write(text)) {
+export async function buildMirror(root, packageJson, { install = installDeps, loadEsbuild = loadEsbuildFrom } = {}, log = text => process.stdout.write(text)) {
   const plan = mirrorPlan(packageJson);
   if (plan === null) throw new Error('la liste ne déclare pas de miroir (gfs.miroir)');
   const dir = join(root, plan.dossier);

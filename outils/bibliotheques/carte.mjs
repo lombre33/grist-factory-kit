@@ -57,7 +57,7 @@ export function buildImportMap(map) {
 // Le texte entre les balises, tel que l'outil l'écrit (et que la politique de sécurité en prend l'empreinte).
 export const importMapText = map => `\n${JSON.stringify(buildImportMap(map), null, 2)}\n`;
 
-const blank = html => html.replace(/<!--[\s\S]*?-->/g, text => text.replace(/[^\n]/g, ' '));
+export const blank = html => html.replace(/<!--[\s\S]*?-->/g, text => text.replace(/[^\n]/g, ' '));
 
 // Où est le contenu de la balise `<script type="importmap">` de la page : { start, end }.
 function spanOf(html) {
@@ -73,18 +73,28 @@ export function rewriteImportMap(html, text) {
   return `${html.slice(0, start)}${text}${html.slice(end)}`;
 }
 
-// Les écarts entre la carte de la page et celle de la liste : une entrée à ajouter, à retirer, à changer, ou un ordre ou une écriture que l'outil ne reconnaît pas.
-export function checkImportMap(html, text) {
-  const { start, end } = spanOf(html);
-  const present = html.slice(start, end);
+// Les écarts entre une carte présente (son texte) et celle de la liste : une entrée à ajouter, à retirer, à changer, ou un ordre ou une écriture que l'outil ne reconnaît pas. `label` dit quelle carte.
+export function mapProblems(present, text, label = 'la carte d\'importation') {
   if (present === text) return [];
   let found;
-  try { found = JSON.parse(present).imports || {}; } catch (error) { return ['la carte d\'importation n\'est pas du JSON : relancer l\'outil']; }
+  try { found = JSON.parse(present).imports || {}; } catch (error) { return [`${label} n'est pas du JSON : relancer l'outil`]; }
   const wanted = JSON.parse(text).imports;
   const problems = [
-    ...Object.keys(wanted).filter(key => !(key in found)).map(key => `à ajouter à la carte d'importation : ${key}`),
-    ...Object.keys(found).filter(key => !(key in wanted)).map(key => `à retirer de la carte d'importation : ${key}`),
-    ...Object.keys(wanted).filter(key => key in found && found[key] !== wanted[key]).map(key => `à changer dans la carte d'importation : ${key} vaut ${found[key]}, la liste dit ${wanted[key]}`),
+    ...Object.keys(wanted).filter(key => !(key in found)).map(key => `à ajouter à ${label} : ${key}`),
+    ...Object.keys(found).filter(key => !(key in wanted)).map(key => `à retirer de ${label} : ${key}`),
+    ...Object.keys(wanted).filter(key => key in found && found[key] !== wanted[key]).map(key => `à changer dans ${label} : ${key} vaut ${found[key]}, la liste dit ${wanted[key]}`),
   ];
-  return problems.length ? problems : ['la carte d\'importation n\'est pas écrite comme l\'outil l\'écrit (ordre, espaces) : relancer l\'outil'];
+  return problems.length ? problems : [`${label} n'est pas écrite comme l'outil l'écrit (ordre, espaces) : relancer l'outil`];
+}
+
+// Les écarts entre la carte de la page et celle de la liste.
+export function checkImportMap(html, text) {
+  const { start, end } = spanOf(html);
+  return mapProblems(html.slice(start, end), text);
+}
+
+// Où est l'élément `<script type="importmap">` tout entier (les balises comprises) : { start, end }, ou null quand la page n'en a pas.
+export function importMapElement(html) {
+  const match = /<script\b[^>]*\btype\s*=\s*["']?importmap["']?[^>]*>[\s\S]*?<\/script>/i.exec(blank(html));
+  return match ? { start: match.index, end: match.index + match[0].length } : null;
 }

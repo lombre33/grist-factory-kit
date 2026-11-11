@@ -17,7 +17,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { EXACT_VERSION_RE, integrity, isPackagePath, packFile, checkCdn, fetchFile } from './primitives.mjs';
-import { readMap, importMapText, rewriteImportMap, checkImportMap } from './carte.mjs';
+import { readMap, importMapText, rewriteImportMap, checkImportMap, blank } from './carte.mjs';
+import { readCopy, rewriteMapBlock, checkMapBlock, checkCopyFolder } from './copies.mjs';
 import { readCodeSpec, writeLiterals, readLiterals } from './empreintes.mjs';
 
 export const JSDELIVR = 'https://cdn.jsdelivr.net/npm';
@@ -115,8 +116,9 @@ export function checkCatalogue(catalogue, list) {
 
 export const inlineHash = body => `'sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}'`;
 // Les commentaires d'une page parlent de <script> et d'adresses : blanchis à longueur égale, ils ne comptent pas et les positions restent celles du texte brut.
-const blank = html => html.replace(/<!--[\s\S]*?-->/g, text => text.replace(/[^\n]/g, ' '));
 const EXECUTED = /^(?:|module|importmap|(?:text|application)\/(?:java|ecma)script)$/i;
+// Les deux cartes en données que le script de choix de la copie pose (copies.mjs) : rien ne les exécute, mais le script les injecte comme carte, et la politique cite l'empreinte de leur texte exact.
+const MAP_DATA = /\bid\s*=\s*["']gfs-carte-(?:cdn|copie)["']/i;
 
 // Les scripts en ligne d'une page (ceux sans `src` qui s'exécutent), la carte d'importation comprise : [{ hash, quoi }], dans l'ordre. Le hash est celui du texte entre les balises, espaces compris.
 export function inlineScripts(html) {
@@ -124,9 +126,10 @@ export function inlineScripts(html) {
   for (const match of blank(html).matchAll(/<script\b([^>]*)>[\s\S]*?<\/script>/gi)) {
     if (/\bsrc\s*=/i.test(match[1])) continue;
     const type = (/\btype\s*=\s*["']?([^"'\s>]*)/i.exec(match[1]) || [])[1] || '';
-    if (!EXECUTED.test(type)) continue;
+    const data = /^application\/json$/i.test(type) && MAP_DATA.test(match[1]);
+    if (!EXECUTED.test(type) && !data) continue;
     const body = html.slice(match.index + match[0].indexOf('>') + 1, match.index + match[0].length - '</script>'.length);
-    found.push({ hash: inlineHash(body), quoi: type.toLowerCase() === 'importmap' ? 'la carte d\'importation' : `un script en ligne « ${body.trim().replace(/\s+/g, ' ').slice(0, 40)}… »` });
+    found.push({ hash: inlineHash(body), quoi: type.toLowerCase() === 'importmap' || data ? 'la carte d\'importation' : `un script en ligne « ${body.trim().replace(/\s+/g, ' ').slice(0, 40)}… »` });
   }
   return found;
 }
@@ -185,8 +188,8 @@ function rewriteScriptSrc(html, policy, catalogue) {
 
 // La page telle que la liste la dit : la carte d'importation d'abord (son empreinte change avec elle), puis le `script-src` qui cite les empreintes. Sans `mapText` (la liste ne déclare pas de carte)
 // ou sans `gfs.politique`, la partie correspondante reste telle que l'app l'a écrite.
-export function rewritePage(html, policy, catalogue, mapText = null) {
-  const withMap = mapText === null ? html : rewriteImportMap(html, mapText);
+export function rewritePage(html, policy, catalogue, mapText = null, copy = null) {
+  const withMap = mapText === null ? html : (copy === null ? rewriteImportMap(html, mapText) : rewriteMapBlock(html, mapText, copy));
   return policy.fixed === null ? withMap : rewriteScriptSrc(withMap, policy, catalogue);
 }
 
@@ -207,10 +210,11 @@ function scriptSrcProblems(html, policy, catalogue) {
 }
 
 // Les écarts entre la page et ce que la liste dit : la carte d'importation, puis les sources de `script-src` (jugées sur la page avec sa carte à jour : c'est celle-là qu'il faut citer).
-export function checkPage(html, policy, catalogue, mapText = null) {
-  const problems = mapText === null ? [] : checkImportMap(html, mapText);
+export function checkPage(html, policy, catalogue, mapText = null, copy = null) {
+  const problems = mapText === null ? [] : (copy === null ? checkImportMap(html, mapText) : checkMapBlock(html, mapText, copy));
   if (policy.fixed === null) return problems;
-  return [...problems, ...scriptSrcProblems(mapText === null ? html : rewriteImportMap(html, mapText), policy, catalogue)];
+  const withMap = mapText === null ? html : (copy === null ? rewriteImportMap(html, mapText) : rewriteMapBlock(html, mapText, copy));
+  return [...problems, ...scriptSrcProblems(withMap, policy, catalogue)];
 }
 
 function reportLiterals({ changed, unknown }, log) {
@@ -230,7 +234,7 @@ export async function generate(root, options = {}, log = text => process.stdout.
   const policy = readPolicy(packageJson);
   if ((policy.fixed === null && map === null) || !existsSync(join(root, policy.page))) return;
   const html = readFileSync(join(root, policy.page), 'utf8');
-  const next = rewritePage(html, policy, { bibliotheques: entries }, map && importMapText(map));
+  const next = rewritePage(html, policy, { bibliotheques: entries }, map && importMapText(map), readCopy(packageJson));
   if (next !== html) writeFileSync(join(root, policy.page), next);
   log(`${policy.page} : ${next === html ? 'inchangée' : 'réécrite'}\n`);
 }
@@ -244,7 +248,9 @@ export function verify(root) {
   if (code) problems.push(...readLiterals(root, code, catalogue));
   const policy = readPolicy(packageJson);
   const map = readMap(packageJson);
-  if (policy.fixed !== null || map !== null) problems.push(...checkPage(readFileSync(join(root, policy.page), 'utf8'), policy, catalogue, map && importMapText(map)).map(problem => `${policy.page} : ${problem}`));
+  const copy = readCopy(packageJson);
+  if (policy.fixed !== null || map !== null) problems.push(...checkPage(readFileSync(join(root, policy.page), 'utf8'), policy, catalogue, map && importMapText(map), copy).map(problem => `${policy.page} : ${problem}`));
+  if (copy) problems.push(...checkCopyFolder(root, copy));
   return { catalogue, problems };
 }
 
