@@ -1,5 +1,5 @@
 // Les textes que le moteur de partage (js/synchro/) demande à son hôte par `port.text(clé, valeurs)`, en français et en anglais : `error.<code>` pour les erreurs prévues, `diag.*` pour le diagnostic à copier, `recv.*` pour ce qu'il écrit
-// dans le document. Repris de i18n/fr.json et i18n/en.json de Sync+ (commit 5e4e38b, moteur 2.6.1) par outils/reprendre-synchro.mjs ; l'hôte rend la clé elle-même quand il ne la connaît pas.
+// dans le document. Repris de i18n/fr.json et i18n/en.json de Sync+ (commit 359e502, moteur 2.7.0) par outils/reprendre-synchro.mjs ; l'hôte rend la clé elle-même quand il ne la connaît pas.
 export const TEXTES = Object.freeze({
   fr: Object.freeze({
     "recv.archive.col": "Supprimée à la source",

@@ -2,6 +2,13 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.21.0 : le moteur de partage 2.7.0, repris de Sync+ (11/11/2026)
+
+Sync+ a livré le moteur **2.7.0** (`fe318cc`, sommet de sa page `359e502`) : la copie du kit passe de 2.6.1 à **2.7.0**. Ajout facultatif, rien ne change sans lui : le port garde ses vingt noms dans le même ordre, le texte des formules de `Synchro` est le même (`test/synchro-formulas-golden.test.mjs`), aucune table ni colonne de plus pour une app qui ne l'utilise pas.
+
+- **2.7.0** : `saveChosenExport({ …, style: true })` envoie, avec la description signée des colonnes, la mise en forme (en-têtes, couleurs, alignement, monnaie résolue, `fmt: true` par colonne, `doc` = langue et devise du document sur la première colonne) et les règles de mise en forme conditionnelle ; la CIBLE les applique aux colonnes que le moteur crée (`target/style.js`, `restyle(journal)` de `target/loop.js`). Cause : la langue du document (`_grist_DocInfo.documentSettings.locale`) décide des séparateurs des nombres et de la devise par défaut. Une règle est une formule Python et n'est **jamais copiée** : `logic/rules.js` la lit par une grammaire fermée (300 caractères, 60 nœuds, profondeur 12, dix règles par colonne) et la CIBLE écrit une formule neuve avec ses propres noms de colonnes. La langue du document n'est changée que par `alignDocFormat`, sur un geste d'un propriétaire. Pas en Échange. Nouveaux fichiers : `logic/docformat.js`, `logic/rules.js`, `target/style.js`. GFS ne passe pas `style` : rien ne change pour « Partager ».
+- **Essais** : deux fichiers de plus (`test/synchro-moteur-format.test.mjs`, `test/synchro-rules.test.mjs`) et `synchro-fake.mjs` repris à jour ; les 306 des fichiers `test/synchro-*` et les 550 du kit sont verts.
+
 ## 0.20.2 : un paquet dont seuls les sous-chemins sont importés n'a plus à être dans `paquets` (11/11/2026)
 
 Demande de Publipostage+ (sa page, « Suite, la liste unique des bibliothèques rejouée sur `fd06824` », point 4) : depuis `bd9f53e` sa politique de sécurité nomme 92 dossiers d'esm.sh au lieu de l'hôte entier, et `@tiptap/pm` n'est plus un paquet de sa carte (la racine du paquet répond 404, rien ne l'importe par son nom nu) mais treize sous-chemins que le bundle d'esm.sh de `@tiptap/core` demande par adresse absolue. L'outil refusait ces sous-chemins (« `@tiptap/pm` n'est pas dans paquets ») ou, si le paquet restait dans `paquets`, refaisait l'entrée nue.
