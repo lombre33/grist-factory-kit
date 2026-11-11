@@ -52,6 +52,14 @@ export async function readInvitation(text) {
   return { ...invitation, share, backCode: await controlCode(invitation.retour, invitation.secret, codeFacts(invitation)) };
 }
 
+// Le document qui invite, tel que la note du journal le garde : ce que dit l'invitation (e-mail, identifiant, équipe,
+// nom saisi par la SOURCE : des dires), et pour un Échange ce que Grist dit de la clé de retour, nom et équipe
+// vérifiés, qui l'emportent.
+export const sourceOf = invitation => ({
+  ...invitation.from,
+  ...(invitation.share ? { docName: invitation.share.name, ...(invitation.share.team ? { team: invitation.share.team } : {}) } : {}),
+});
+
 // Clés de cette réception (voir linkKeys) : une paire tirée ici, dont seule la clé publique est gardée
 // (dans la note du journal, pour la réponse), et la clé publique de l'invitation. `down` vérifie les
 // envois de la SOURCE, `up` signe l'envoi de retour d'un Échange.
@@ -78,7 +86,7 @@ export const canRelink = (known, invitation) => invitation.mode !== 'public' && 
 export async function relinkReception(known, invitation) {
   if (!canRelink(known, invitation)) throw new Error('alreadyReceived');
   const { id, secret, name, renforce } = invitation;
-  const from = { ...invitation.from, ...(invitation.share ? { docName: invitation.share.name } : {}) };
+  const from = sourceOf(invitation);
   const keys = await receptionKeys(invitation);
   await updateJournalNote(known.journal, n => ({ ...n, id, secret, name, from, renforce: renforce || undefined, ...keyNote(invitation, keys) }));
   await storeKey(known.note.tables.map(tb => tb.dest), invitation.export, keys.down);
@@ -115,7 +123,7 @@ function receptionNote(invitation, plans, keys, before, { reserve, options }) {
   const own = p => missingColumns(before, p.dest, p.tb.columns, p.map || {});
   return {
     id: invitation.id, export: invitation.export, name: invitation.name, secret: invitation.secret,
-    from: { ...invitation.from, ...(invitation.share ? { docName: invitation.share.name } : {}) },
+    from: sourceOf(invitation),
     ...(mode === 'public' ? { mode, base: invitation.base } : mode === 'echange' ? { mode } : {}),
     ...(invitation.renforce ? { renforce: true } : {}), ...(reserve !== false ? { reserve: true } : {}), ...(keys ? keyNote(invitation, keys) : {}),
     ...(mode === 'echange' ? {} : optionsNote(options || {})),
@@ -127,9 +135,12 @@ function receptionNote(invitation, plans, keys, before, { reserve, options }) {
 // Un journal pour l'export, nommé d'après lui, et une destination par table. `plans` : [{ tb, dest, map?,
 // match? }]. Échange : l'envoi de retour est branché aussitôt ; l'adresse de retour, un droit d'écriture,
 // n'est notée nulle part. Hors lien public, le formulaire du journal est publié (ensureForm) ; en lien
-// public, il n'y a pas de formulaire et la recopie commence. Rend `{ journal, note, created }` :
-// `created` = les destinations que cette réception a créées (pour undoReception).
-export async function createReception(invitation, plans, { reserve = true, options = {}, compared = false } = {}) {
+// public, il n'y a pas de formulaire et la recopie commence. `arrange` (faux par défaut : l'hôte décide de
+// la mise en page de son document) : la page du formulaire se range sous celle de la destination
+// (`ensureForm`, `below`) et le partage du formulaire garde de quoi reconnaître la réception si son
+// journal est supprimé (`note`, voir markReceptions). Rend `{ journal, note, created }` : `created` = les
+// destinations que cette réception a créées (pour undoReception).
+export async function createReception(invitation, plans, { reserve = true, options = {}, compared = false, arrange = false } = {}) {
   mustHaveCompared(invitation, compared);
   const journal = journalId(invitation.name, (await readSchema()).tableIds);
   const { mode } = invitation;
@@ -141,7 +152,7 @@ export async function createReception(invitation, plans, { reserve = true, optio
   await createJournal(journal, note);
   if (mode === 'echange') await wireExchange(note, invitation.retour, keys.up);
   const created = plans.map(p => p.dest).filter(d => !before.has(d));
-  if (mode !== 'public') await ensureForm(journal);
+  if (mode !== 'public') await ensureForm(journal, arrange ? { below: plans.map(p => p.dest), note } : {});
   else consolidateAll();
   return { journal, note, created };
 }

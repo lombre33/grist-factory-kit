@@ -1,11 +1,11 @@
-> **Copie** du moteur de Sync+ (commit `e7054cc`, moteur 2.1.0), reprise par `outils/reprendre-synchro.mjs` : ne pas la modifier ici sans le dire à Sync+ (consignes/sync/ dans GFS). Les textes de l'hôte sont dans `textes.js`.
+> **Copie** du moteur de Sync+ (commit `c631cfa`, moteur 2.6.0), reprise par `outils/reprendre-synchro.mjs` : ne pas la modifier ici sans le dire à Sync+ (consignes/sync/ dans GFS). Les textes de l'hôte sont dans `textes.js`.
 
 # Le moteur de Sync+ (`js/engine/`)
 
 Ce dossier crée, lit, écrit et décide ; il ne dessine rien. Les écrans (`js/source/`, `js/target/`, `js/ui.js`…)
 appellent le moteur, jamais l'inverse. Modules ES, sans bibliothèque ni étape de build.
 
-**Version du moteur : `ENGINE_VERSION` dans `version.js`** (2.1.0). Elle ne suit pas la version de Sync+ : elle
+**Version du moteur : `ENGINE_VERSION` dans `version.js`** (2.2.0). Elle ne suit pas la version de Sync+ : elle
 change quand le moteur change ce qu'il attend du port, ce qu'il écrit dans les documents ou le sens d'un champ des
 codes (`CODE_FORMAT`). Majeure : un port, un nom de table ou un format qui ne se lisent plus comme avant.
 
@@ -20,6 +20,14 @@ codes (`CODE_FORMAT`). Majeure : un port, un nom de table ou un format qui ne se
 4. Un texte lu par la personne vient de `port.text(clé, valeurs)` ou d'une erreur prévue (`failure('<code>')`, texte
    `error.<code>`). Le port rend **la clé elle-même** quand elle est inconnue : `errors.js` s'en sert pour reconnaître
    une erreur prévue.
+
+5. Aucune fonction ne dépasse les seuils de l'outil d'audit de GFS (80 lignes, complexité 15, imbrication 5) : une fonction qui
+   grossit se découpe en petites fonctions nommées, comme `createRestPort` (un groupe de requêtes par fonction du module),
+   `lotFormula` (une étape par fonction) ou `diagnosticText` (une section par fonction). `tests/tools/mesure-moteur.mjs`
+   le mesure avec les fonctions mêmes de l'outil (`GWAUDIT_DIR=<outil> node tests/tools/mesure-moteur.mjs`).
+6. Le texte des formules de `Synchro` (`syncFormulas` : `keys`, `lot`, `state`) est celui que le moteur pose dans les colonnes
+   des documents déjà partagés : il ne change pas d'un octet sans décision (version du moteur relevée, dite à GFS).
+   `tests/unit/formulas-golden.test.mjs` compare ce texte à une référence (`tests/unit/golden/formulas.json`).
 
 ## Démarrer
 
@@ -110,7 +118,8 @@ SOURCE (`source/export.js`, `source/invite.js`, plus `source/actions.js` pour r�
 | `saveChosenExport({ exp?, name, selection, links?, rules? })` | `selection` : `[{ table, columns: [identifiants cochés], filter }]` | `{ id, name, tables, changed, created }` (`created` : l'export tel que l'écran des destinataires l'attend) |
 | `finishEdit(exp, { name, changed }, progress?)` | l'export modifié | lignes renvoyées (ou `null` si le renvoi attend son tour) |
 | `startInvitation(exp, { renforce? })` | l'export | `{ exp, entry, secret }` : `secret` n'est gardé nulle part |
-| `invitationCode(exp, entry, secret, retour?)` | | `{ code, expire, backCode }` (le code à transmettre) |
+| `invitationCode(exp, entry, secret, retour?)` | | `{ code, expire, backCode }` (le code à transmettre ; `from` porte l'équipe du document et le nom retenu par `rememberDocName`) |
+| `rememberDocName(nom)`, `sourceDocName()` (`source/synchro.js`) | le nom que la personne donne à ce document (un widget ne peut pas lire le sien) ; vide : effacé | rien, puis le nom retenu dans la note SOURCE (`nomDoc`) |
 | `renewInvitation(inv)` | l'invitation en attente | `{ entry, secret }`, ou `null` pour un Échange |
 | `enablePublicLink(exp)` | | le code du lien public |
 | `startReturn(exp, …)` puis `linkReturn(inv, lien)` | Échange : le lien du formulaire de retour | `{ entry, secret, retour }` |
@@ -125,8 +134,11 @@ CIBLE (`target/receive.js`) :
 | `readInvitation(texte)` | le code collé | l'invitation contrôlée (instance, validité, propriétaire pour un Échange, `share`, `backCode`) |
 | `knownReception(invitation)`, `canRelink(known, invitation)`, `relinkReception(known, invitation)` | | la réception de cet export qui existe déjà, si elle peut reprendre, et sa reprise (nouvelles clés) |
 | `checkDestinations(invitation, plans)` | `plans` : `[{ tb, dest }]` | `{ schema, existing }` : les destinations qui existent déjà (à faire correspondre : `plan.map`, `plan.match`) |
-| `createReception(invitation, plans, { reserve?, options? })` | | `{ journal, note, created }` : le journal, son formulaire, les destinations |
+| `createReception(invitation, plans, { reserve?, options?, arrange? })` | `arrange` : vrai pour ranger la page du formulaire sous celle de la destination et noter la réception dans son partage (faux par défaut : la mise en page du document est celle de l'hôte) | `{ journal, note, created }` : le journal, son formulaire, les destinations |
+| `markReceptions(receptions)`, `readLost()`, `dismissLost(lost)` (`target/lost.js`) | `receptions` : `[{ journal, note }]` | pose la marque d'une réception sur le partage de son formulaire (`description` de `_grist_Shares`) ; rend les réceptions dont le journal n'existe plus (`{ journal, name, shares, dests: [{ dest, there }] }`) ; retire l'avis (les partages) |
+| `ensureForm(journal, { below?, note? })` (`pages.js`) | `below` : tables qui reçoivent, `note` : la note de la réception | publie le formulaire ; à sa création, la page se range sous celle de `below` (`placeBelow`) et le partage garde la marque de `note` |
 | `undoReception({ journal, created })` | | défait la réception qu'on vient de créer |
+| `sourceOf(invitation)` | l'invitation lue | le document de la SOURCE tel que la note du journal le garde (`email`, `docId`, `team`, `docName`) ; en Échange, nom et équipe lus chez Grist l'emportent. L'hôte en fait un lien avec `docUrl(origin, team, docId)` (`logic/codes.js`, `origin` : l'instance de **son** document, jamais celle d'un code) |
 | `receptionReply({ journal, note }, lien)` | le lien du formulaire collé | `{ code, control }` : le code de réponse et le code de contrôle |
 | `myEmail(journal)` | | l'e-mail de la personne connectée, calculé par Grist |
 

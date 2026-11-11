@@ -72,6 +72,22 @@ export const exportSchema = (columns, withOpts = false) => columns.map(({ id, ty
 
 const text200 = (from, keys) => Object.fromEntries(keys.map(k => [k, String(from[k] ?? '').slice(0, 200)]));
 
+// Un nom que dit un code (le document de la SOURCE) : texte seul, jamais une décision. Sans caractères de
+// contrôle ni de sens d'écriture (un U+202E retournerait le texte qui suit), espaces ramenées à une, 200
+// caractères au plus. Montré par textContent, comme tout ce qu'un code dit.
+export const cleanLabel = text => String(text ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2066-\u206f\ufeff]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+
+// Équipe et nom du document de la SOURCE, tels que l'invitation les dit (la SOURCE ne peut pas lire le nom de
+// son document : elle le tient d'une saisie, voir rememberDocName). L'équipe sert à refaire l'adresse du
+// document, elle n'est donc gardée que de la forme d'un identifiant d'équipe (« » : site sans équipe dans le
+// chemin) ; absente, aucun lien n'est fait.
+const TEAM_ID = /^[A-Za-z0-9_-]{1,120}$/;
+function sourceDoc(from) {
+  const team = typeof from.team === 'string' && (from.team === '' || TEAM_ID.test(from.team)) ? { team: from.team } : {};
+  const name = cleanLabel(from.docName);
+  return { ...team, ...(name ? { docName: name } : {}) };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Invitation (SOURCE -> CIBLE) et réponse (CIBLE -> SOURCE)
 
@@ -125,7 +141,7 @@ export function parseInvitation(text, version = '') {
   return {
     id: inv.id, export: inv.export, name: inv.name.slice(0, 200), secret: inv.secret || '', origin: String(inv.origin || ''), ...mode,
     expire: inv.expire || 0, renforce: inv.renforce === true, pub: inv.pub || '',
-    from: text200(from, ['email', 'docId']), version: codeVersion(inv),
+    from: { ...text200(from, ['email', 'docId']), ...sourceDoc(from) }, version: codeVersion(inv),
     tables: inv.tables.map(tb => ({ table: tb.table, columns: exportSchema(tb.columns) })),
   };
 }
@@ -212,6 +228,41 @@ export function loopingTables(tables, recipientDocId, received) {
 // La clé de partage est un droit d'écriture : on ne l'affiche jamais en entier, même dans un
 // message d'erreur de Grist.
 export const maskKey = text => String(text || '').replace(/\/(api\/s|forms)\/([A-Za-z0-9]{4})[A-Za-z0-9]*/g, '/$1/$2…');
+
+// Le nom d'un document tel que Grist l'écrit dans son adresse (« slug ») : lettres et chiffres sans accent, séparés par
+// des tirets. Grist n'en tient pas compte pour trouver le document (il ne sert qu'à lire l'adresse) : un nom un peu
+// différent ouvre le même document.
+export function docSlug(name) {
+  return String(name ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').slice(0, 80).replace(/^-+|-+$/g, '');
+}
+
+// L'origine telle qu'on l'a reçue si c'est exactement une origine sûre (https, ou http pour un Grist local d'essai, sans
+// chemin ni rien d'autre), sinon ''.
+function safeOrigin(origin) {
+  let base;
+  try {
+    base = new URL(String(origin || ''));
+  } catch (e) {
+    return '';
+  }
+  const secure = base.protocol === 'https:' || (base.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(base.hostname));
+  return secure && base.origin === origin ? origin : '';
+}
+
+// Adresse d'ouverture d'un document dans Grist, sous la forme que Grist écrit lui-même :
+// `<instance>[/o/<équipe>]/<identifiant>/<nom>` (identifiant de 12 caractères au moins ; plus court, Grist écrit
+// `/doc/<identifiant>`). Le nom est celui qu'on connaît (`name`, voir docSlug), « document » à défaut : Grist ne s'en
+// sert pas pour trouver le document, et rétablit le sien. L'équipe, elle, est indispensable sur un site qui l'a dans
+// son chemin : sans la bonne, Grist répond « Page non trouvée » (vérifié). Un espace personnel (`docs-<numéro>` dans la
+// fiche d'un document) s'écrit `docs` dans les adresses de Grist (`normalizeOrgDomain`) : `docs-<numéro>` ne s'ouvre
+// que pour son propriétaire. `origin` est celle de CE document, jamais celle d'un code : un lien ne quitte donc pas
+// l'instance. https seulement (http pour un Grist local d'essai). '' si l'adresse n'est pas sûre.
+export function docUrl(origin, team, docId, name = '') {
+  if (!safeOrigin(origin) || !TEAM_ID.test(String(docId || '')) || (team && !TEAM_ID.test(String(team)))) return '';
+  const site = /^docs-\d+$/.test(team || '') ? 'docs' : team;
+  const where = `${origin}${site ? `/o/${site}` : ''}`;
+  return docId.length >= 12 ? `${where}/${docId}/${docSlug(name) || 'document'}` : `${where}/doc/${docId}`;
+}
 
 // `baseUrl` renvoyé par getAccessToken : https://<instance>[/o/<équipe>]/api/docs/<docId>
 export function parseDocBaseUrl(baseUrl) {

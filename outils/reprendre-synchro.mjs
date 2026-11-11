@@ -1,7 +1,7 @@
 // Reprend le moteur de partage de Sync+ (« Synchro Grist ») dans le kit : `js/engine/` devient `js/synchro/`, ses essais Node deviennent `test/synchro-*.test.mjs`, et les textes que le moteur demande
 // à son hôte (`port.text`) sont rassemblés dans `js/synchro/textes.js`. Une copie à un commit : ce que GFS y corrige, il le dit dans la page d'état de Sync+ (consignes/sync/), et Sync+ reprend la version du kit.
 //   node outils/reprendre-synchro.mjs /chemin/vers/grist-widget-one-way-sync
-import { cpSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { cpSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,10 +24,12 @@ const readme = join(KIT, 'js/synchro/README.md');
 writeFileSync(readme, `> **Copie** du moteur de Sync+ (commit \`${commit}\`, moteur ${version}), reprise par \`outils/reprendre-synchro.mjs\` : ne pas la modifier ici sans le dire à Sync+ (consignes/sync/ dans GFS). Les textes de l'hôte sont dans \`textes.js\`.\n\n${readFileSync(readme, 'utf8')}`);
 
 // Ses essais : seuls ceux qui n'importent que le moteur (i18n.test.mjs est celui de l'écran de Sync+).
-for (const name of readdirSync(KIT + '/test')) if (name.startsWith('synchro-')) rmSync(join(KIT, 'test', name));
+for (const name of readdirSync(KIT + '/test')) if (name.startsWith('synchro-')) rmSync(join(KIT, 'test', name), { recursive: true, force: true });
 const tests = join(source, 'tests/unit');
 let copied = 0;
 for (const name of readdirSync(tests).sort()) {
+  // Un dossier de références (`golden/`, le texte exact des formules) suit ses essais, sous un nom du kit ; seuls les fichiers sont des essais.
+  if (statSync(join(tests, name)).isDirectory()) { cpSync(join(tests, name), join(KIT, 'test', `synchro-${name}`), { recursive: true }); continue; }
   const text = readFileSync(join(tests, name), 'utf8');
   // Un essai qui lit un écran de Sync+ (import statique ou dynamique) reste chez Sync+. Seuls `format` de js/i18n.js (le texte d'une clé, avec ses pluriels) est remplacé par un petit outil d'essai du kit, sur les textes
   // que le moteur demande ; i18n.test.mjs, qui garde les textes des écrans de Sync+, reste chez elle.
@@ -39,6 +41,7 @@ for (const name of readdirSync(tests).sort()) {
     .replaceAll("'./fixtures.mjs'", "'./synchro-fixtures.mjs'")
     .replaceAll("'./engine-fake.mjs'", "'./synchro-fake.mjs'")
     .replaceAll("join(ROOT, 'js/engine')", "join(ROOT, 'js/synchro')")
+    .replaceAll("'./golden/", "'./synchro-golden/")
     .replaceAll("'../..')", "'..')")
     // Le test du port de Sync+ lit son fichier `js/sync-port.js`, qui n'est pas dans le kit : le port de l'hôte (GFS) a ses propres essais.
     .replace(/test\('le port de Sync\+ a la forme[\s\S]*?\n\}\);\n\n/, '');

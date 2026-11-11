@@ -2,6 +2,17 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.17.0 : le moteur de partage 2.6.0, repris de Sync+ (11/11/2026)
+
+Sync+ a livré depuis la 0.14.0 les moteurs **2.2.0 à 2.6.0** (`1cd6f0d` à `e3c7953`, sommet de sa page `c631cfa`) : la copie du kit passe de 2.1.0 à **2.6.0**. Aucun nom du port ne change (`createRestPort` rend toujours ses vingt noms, dans le même ordre) : un hôte qui prenait son port de `createRestPort` n'a rien à écrire.
+
+- **2.2.0** : l'invitation porte `from.team` et `from.docName` (facultatifs), la note du journal les garde, `docUrl` refait l'adresse du document pour que l'hôte en fasse un lien. **2.5.0** : `docUrl(origin, team, docId, name)` l'écrit comme Grist, `<instance>[/o/<équipe>]/<identifiant>/<nom>` (l'instance DINUM n'ouvrait pas l'ancienne forme `/doc/<identifiant>`).
+- **2.3.0** : en Échange, les pièces jointes vont aussi du participant vers l'export qui invite ; un fichier reçu n'est pas renvoyé ; une version attend ses fichiers avant d'être recopiée.
+- **2.4.0** : `createReception(…, { arrange: true })` range la page du journal sous celle de la destination ; `markReceptions`, `readLost` et `dismissLost` (`target/lost.js`) disent une réception dont le journal n'existe plus. Facultatif : rien ne change sans `arrange`.
+- **2.6.0** : cinq fonctions découpées sous les seuils de l'outil d'audit, sans changer ce qu'elles rendent (le texte des formules est gardé octet pour octet par `test/synchro-formulas-golden.test.mjs` et `test/synchro-golden/`).
+- **`outils/reprendre-synchro.mjs`** copie maintenant aussi un dossier de références des essais de Sync+ (`golden/` devient `test/synchro-golden/`, le chemin est réécrit) et efface les anciens dossiers `test/synchro-*` : il s'arrêtait à la première rencontre d'un dossier dans `tests/unit`.
+- **Essais** : 525 verts (`node --test "test/*.test.mjs"`), dont 3 fichiers de plus (`synchro-moteur-lost`, `synchro-page-order`, `synchro-formulas-golden`).
+
 ## 0.16.0 : les empreintes écrites dans le code d'une app suivent le catalogue (10/11/2026)
 
 Suite de l'outil des bibliothèques d'une app (0.15.0). Un chargeur de scripts écrit souvent, à côté de l'adresse d'une bibliothèque qu'il charge à la demande, son empreinte (`{ src: 'https://…', integrity: 'sha384-…' }`) : c'était un deuxième endroit à tenir à la main.

@@ -289,6 +289,19 @@ export function hookLabel(memo, docName = '') {
   return parts.map((p, i) => (i === at ? shown : p)).filter(Boolean).join(' · ');
 }
 
+// Document d'un destinataire d'après son mémo : { email, docId, team, name } (chaînes vides si absents), pour refaire
+// l'adresse du document (voir docUrl). Même lecture que hookLabel : le mémo d'avant la 0.10.1 s'arrête à l'équipe
+// (troisième morceau sans « / »), et l'e-mail peut manquer.
+export function memoDoc(memo) {
+  const parts = String(memo || '').split(' · ').filter(Boolean);
+  const email = parts.find(p => p.includes('@')) || '';
+  const rest = parts.filter(p => p !== email);
+  const placeOnly = rest.length === 1 && rest[0].includes('/');
+  const place = (placeOnly ? rest[0] : rest[1]) || '';
+  const team = place.split('/')[0];
+  return { email, docId: placeOnly ? '' : rest[0] || '', team, name: place.slice(team.length + 1) };
+}
+
 // Journal de retour d'un participant (webhook `hook`) : noté à l'approbation (`hook`) ; pour un
 // Échange branché avant, retrouvé par le document de la fiche, cité dans le mémo du webhook.
 export const ownJournal = hook => ({ note }) => note.hook === hook.id
@@ -312,8 +325,10 @@ export function exchangeTables(entries, columnsOf) {
   return entries.map((entry) => {
     const map = entry.map || {};
     const back = new Map([...new Set([...(entry.columns || []).map(c => c.id), ...Object.keys(map)])].map(id => [map[id] || id, id]));
-    // Les fichiers ne vont, pour l'instant, que de la SOURCE vers la CIBLE.
-    const columns = (columnsOf(entry.dest) || []).filter(c => !isFileColumn(c) && back.has(c.id)).map(c => ({ ...c, as: back.get(c.id) }));
+    // Les colonnes Pièces jointes reviennent aussi : leurs fichiers repartent par la ligne `fichiers` de
+    // cet export (voir files.js), vers le journal de retour de la SOURCE, qui n'écrit que les colonnes
+    // que son export envoie.
+    const columns = (columnsOf(entry.dest) || []).filter(c => back.has(c.id)).map(c => ({ ...c, as: back.get(c.id) }));
     return { table: entry.dest, columns, filter: null };
   }).filter(tb => tb.columns.length);
 }
