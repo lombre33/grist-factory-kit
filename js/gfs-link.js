@@ -13,6 +13,7 @@
 //   GfsLink.ambiance(), GfsLink.onAmbiance(fn)   // l'ambiance et la couleur que la personne a choisies pour GFS et ses apps (js/ambiance-message.js), ou null : rien n'est choisi (5.2 point 10) ; js/ambiance.js la pose
 //   GfsLink.storageGet(clé), GfsLink.storageSet(clé, texte | null)   // les choix de la personne : chez GFS (le cadre n'a pas de stockage à lui, 5.3), dans le navigateur seule
 //   GfsLink.extensions(), GfsLink.library(id), GfsLink.onExtensions(fn), GfsLink.install(id)   // les extensions actives, la source de leurs bibliothèques (5.2 point 4, 5.4)
+//   GfsLink.copies()                             // les fonctions dont la copie figée est rangée dans l'app (`copie=` dans l'adresse du cadre, lue tout de suite) : l'éditeur ; [] seule ou sans choix (5.2 point 12)
 //   GfsLink.native(id)                           // { version, src, integrite, forme } : la copie figée que GFS sert pour une bibliothèque native de l'app (choix de la personne), ou null : le CDN de l'app (5.2 point 12)
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
 //   GfsLink.openFile({ app, id, type })          // GFS ouvre ce fichier dans son app : { ouvert } ; dans une autre app que celle-ci, elle prend la place de celle-ci (5.4, point 7)
@@ -43,7 +44,7 @@
 // contexte, l'ouverture, la langue, la barre, l'identité et l'ambiance sont null, les extensions vides. Un message n'est lu que s'il vient du cadre parent (`event.source`) et porte le contrat de GFS ;
 // l'écoute passe par addEventListener, jamais par `window.onmessage =`, qui remplacerait celle du script d'API de Grist.
 import { once } from './once.js';
-import { hostContract } from './host.js';
+import { hostContract, hostCopies } from './host.js';
 import { normalizeAmbiance } from './ambiance-message.js';
 
 once('gfs-link', import.meta.url);
@@ -513,6 +514,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     extensions: () => link.extensions.slice(),
     library: id => copy(link.libraries.get(id)),
     native: id => copy(link.natives.get(id)),
+    copies: () => (link.hosted ? hostCopies(host.location && host.location.search) : []),
     storageGet: key => storageGet(link, key),
     storageSet: (key, value) => storageSet(link, key, value),
     hideBar: hidden => hideBar(link, hidden),

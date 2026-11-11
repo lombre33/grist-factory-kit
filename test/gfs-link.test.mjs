@@ -192,6 +192,17 @@ test('natives : la copie figée choisie, avec sa version ; une entrée mal form�
   assert.equal(link.native('docx'), null);
 });
 
+test('copies : les fonctions dont la copie figée est rangée dans l\'app, lues dans l\'adresse du cadre tout de suite (5.2, point 12)', async () => {
+  const at = search => createGfsLink({ host: gfs({ search }).host, timeoutMs: 50 });
+  assert.deepEqual(at('?gfs=0&copie=editeur').copies(), ['editeur'], 'lu sans rien demander : avant même la réponse de GFS');
+  assert.deepEqual(at('?access=full&copie=editeur,pdf-export&gfs=0').copies(), ['editeur', 'pdf-export']);
+  assert.deepEqual(at('?gfs=0&copie=Editeur,,2x,editeur').copies(), ['editeur'], 'un identifiant mal formé est ignoré');
+  assert.deepEqual(at('?gfs=0').copies(), [], 'GFS n\'en dit rien : le CDN');
+  assert.deepEqual(at('?copie=editeur').copies(), [], 'sans `gfs=`, l\'app est seule : le paramètre n\'est pas de GFS');
+  const alone = createGfsLink({ host: { location: { search: '?gfs=0&copie=editeur' }, parent: null, addEventListener() {} }, timeoutMs: 50 });
+  assert.deepEqual(alone.copies(), [], 'une page qui n\'est pas dans un cadre est seule, quoi que dise son adresse');
+});
+
 test('un abonné qui échoue n\'empêche pas les suivants', async () => {
   const { fake, link } = await hosted();
   const seen = [];

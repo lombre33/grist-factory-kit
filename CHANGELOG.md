@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.19.0 : `GfsLink.copies()`, les fonctions dont la copie figée est rangée dans l'app (11/11/2026)
+
+Choix du porteur (11/11) : la copie de l'éditeur (TipTap, ProseMirror) est **dans le dépôt de Publipostage+**, pas chez GFS : sa « copie » est une carte d'importation que la page pose au démarrage, et une page n'en a qu'une (Firefox ignore la seconde). La page doit donc connaître le choix **avant** la réponse de GFS.
+
+- **`GfsLink.copies()`** rend la liste des fonctions (`['editeur']`) dont la personne a choisi la copie figée rangée dans l'app : GFS la met dans l'adresse du cadre (`copie=editeur`, à côté de `gfs=`), `copies()` la lit tout de suite, sans rien demander. `[]` pour une app seule, ou quand GFS n'en dit rien (le CDN de l'app).
+- **`hostCopies(search)`** (`js/host.js`) : la même lecture, sans état, pour une page qui choisit sa carte avant de charger le lien.
+- **Prend effet au prochain démarrage de l'app** : l'adresse du cadre ne change pas en cours de route ; GFS le dit à la personne.
+- **Essais** : 1 de plus (`test/gfs-link.test.mjs`), échoue sur le code d'avant. Rien ne change pour une app qui n'appelle pas `copies`.
+
 ## 0.18.0 : `GfsLink.native(id)`, la copie figée d'une bibliothèque native (11/11/2026)
 
 Demande d'Antoine (10/11) : pour chaque bibliothèque d'une app, le CDN ou une copie figée au choix dans la fenêtre « Apps et extensions » de GFS, Publipostage+ compris. Les copies des bibliothèques natives sont chez GFS (`vendor/`, choix du 11/11) ; GFS dit à l'app lesquelles la personne a choisies (contrats 5.2, point 12).
