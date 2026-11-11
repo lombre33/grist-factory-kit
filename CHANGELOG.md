@@ -2,6 +2,13 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.20.2 : un paquet dont seuls les sous-chemins sont importés n'a plus à être dans `paquets` (11/11/2026)
+
+Demande de Publipostage+ (sa page, « Suite, la liste unique des bibliothèques rejouée sur `fd06824` », point 4) : depuis `bd9f53e` sa politique de sécurité nomme 92 dossiers d'esm.sh au lieu de l'hôte entier, et `@tiptap/pm` n'est plus un paquet de sa carte (la racine du paquet répond 404, rien ne l'importe par son nom nu) mais treize sous-chemins que le bundle d'esm.sh de `@tiptap/core` demande par adresse absolue. L'outil refusait ces sous-chemins (« `@tiptap/pm` n'est pas dans paquets ») ou, si le paquet restait dans `paquets`, refaisait l'entrée nue.
+
+- **`gfs.carte.sousChemins`** : le paquet nommé doit avoir sa **version exacte dans `dependencies`**, et n'a plus à être dans `paquets`. Sans lui dans `paquets`, la carte n'a pas son entrée nue, et ses sous-chemins sont écrits comme avant, ramenés à l'instance unique. Une version absente ou à plage est refusée : « la version de X doit être exacte dans dependencies ». Rien ne change pour une liste qui garde le paquet dans `paquets`.
+- **Essais** : `test/bibliotheques-carte.test.mjs` (la liste sans `@tiptap/pm` dans `paquets` : pas d'entrée nue, sous-chemins ramenés ; le message de version) ; les 537 du kit sont verts.
+
 ## 0.20.1 : le moteur de partage 2.6.1, repris de Sync+ (11/11/2026)
 
 Sync+ a livré le correctif **2.6.1** de l'audit qui précède sa Bêta (`7f0ce56`, sommet de sa page `5e4e38b`) : la copie du kit passe de 2.6.0 à **2.6.1**. Rien ne change pour une app : le port garde ses vingt noms dans le même ordre, le texte des formules de `Synchro` est le même (`test/synchro-formulas-golden.test.mjs`), aucune table ni colonne de plus.

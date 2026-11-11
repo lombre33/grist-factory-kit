@@ -56,7 +56,11 @@ test('readMap : rien sans déclaration ; une version exacte, des noms qui existe
   loose.dependencies['@tiptap/core'] = '^3.31.3';
   assert.throws(() => readMap(loose), /la version de @tiptap\/core doit être exacte/);
   assert.throws(() => readMap(withMap({ uniques: ['prosemirror-view'] })), /prosemirror-view n'est pas dans paquets/);
-  assert.throws(() => readMap(withMap({ sousChemins: { 'autre': { model: 'prosemirror-model' } } })), /autre n'est pas dans paquets/);
+  assert.throws(() => readMap(withMap({ sousChemins: { 'autre': { model: 'prosemirror-model' } } })), /la version de autre doit être exacte/);
+  const subPathsOnly = withMap({ paquets: ['prosemirror-model', 'prosemirror-state', '@tiptap/core'] });
+  const { imports } = buildImportMap(readMap(subPathsOnly));
+  assert.equal(imports['@tiptap/pm'], undefined, 'un paquet dont seuls les sous-chemins sont importés n\'a pas d\'entrée nue');
+  assert.equal(imports['https://esm.sh/@tiptap/pm@3.31.3/es2022/model.mjs'], 'https://esm.sh/*prosemirror-model@1.25.11', 'ses sous-chemins sont ramenés à l\'instance unique');
   assert.throws(() => readMap(withMap({ sousChemins: { '@tiptap/pm': { core: '@tiptap/core' } } })), /@tiptap\/core, qui n'est pas dans uniques/);
   assert.throws(() => readMap(withMap({ plages: { '@tiptap/core': '^3.0.0' } })), /@tiptap\/core n'est pas dans uniques/);
   assert.throws(() => readMap(withMap({ fixes: { x: 3 } })), /des adresses attendues/);

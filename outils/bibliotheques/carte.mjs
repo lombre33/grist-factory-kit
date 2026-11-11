@@ -5,6 +5,7 @@
 //                       "paquets": ["prosemirror-model", "@tiptap/core"],                                              les noms nus, dans l'ordre de la carte ; leur version est celle de `dependencies`
 //                       "uniques": ["prosemirror-model"],                                                              ceux dont il ne doit exister qu'UNE instance (`*` d'esm.sh : ses propres dépendances restent à la carte)
 //                       "sousChemins": { "@tiptap/pm": { "model": "prosemirror-model" } },                             les adresses absolues qu'un paquet importe de lui-même, ramenées à l'instance unique
+//                                                                                                                              (le paquet n'a pas à être dans `paquets` : sa version exacte dans `dependencies` suffit)
 //                       "plages": { "prosemirror-state": "^1.0.0" },                                                   les adresses à plage de versions que d'autres paquets d'esm.sh demandent
 //                       "cible": "es2022" } }                                                                          la cible de construction d'esm.sh (es2022 par défaut)
 // Une bibliothèque en deux copies dans la page se voit tard (ProseMirror : « Adding different instances of a keyed plugin », des touches qui plantent) : d'où `uniques`, et des sous-chemins ramenés à elle.
@@ -20,10 +21,11 @@ function checkNames(spec, deps) {
   for (const name of spec.uniques || []) if (!spec.paquets.includes(name)) throw new Error(`gfs.carte.uniques : ${name} n'est pas dans paquets`);
 }
 
-function checkRemaps(spec) {
+// Un paquet dont le code n'importe que des sous-chemins (jamais son nom nu) n'a pas à être dans `paquets` : il lui faut sa version exacte dans `dependencies`.
+function checkRemaps(spec, deps) {
   const unique = new Set(spec.uniques || []);
   for (const [paquet, subs] of Object.entries(spec.sousChemins || {})) {
-    if (!spec.paquets.includes(paquet)) throw new Error(`gfs.carte.sousChemins : ${paquet} n'est pas dans paquets`);
+    if (!EXACT_VERSION_RE.test(deps[paquet] || '')) throw new Error(`gfs.carte.sousChemins : la version de ${paquet} doit être exacte dans dependencies (reçu : ${deps[paquet]})`);
     for (const [sub, target] of Object.entries(subs)) if (!unique.has(target)) throw new Error(`gfs.carte.sousChemins : ${paquet}/${sub} ramène à ${target}, qui n'est pas dans uniques`);
   }
   for (const name of Object.keys(spec.plages || {})) if (!unique.has(name)) throw new Error(`gfs.carte.plages : ${name} n'est pas dans uniques`);
@@ -36,7 +38,7 @@ export function readMap(packageJson) {
   const deps = packageJson.dependencies || {};
   if (!/^https:\/\/[^/\s]+$/.test(spec.origine || '')) throw new Error('gfs.carte.origine : une origine https attendue (https://esm.sh)');
   checkNames(spec, deps);
-  checkRemaps(spec);
+  checkRemaps(spec, deps);
   const fixes = spec.fixes || {};
   if (Object.values(fixes).some(value => typeof value !== 'string')) throw new Error('gfs.carte.fixes : des adresses attendues');
   return { origine: spec.origine, fixes, paquets: spec.paquets, uniques: new Set(spec.uniques || []), sousChemins: spec.sousChemins || {}, plages: spec.plages || {}, cible: spec.cible || 'es2022', deps };
