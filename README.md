@@ -146,6 +146,34 @@ const ambiance = createAmbiance({ link: monLien, isDark: () => monThemeEstSombre
 
 `createAmbiance({ link, isDark, doc, win })` demande `link` et `isDark` (une erreur sinon) ; `doc` et `win` sont la page, pour un essai.
 
+## Les correcteurs du navigateur, coupés par un bouton de GFS
+
+Un correcteur du navigateur (LanguageTool) juge chaque cadre d'après **sa propre adresse** : son interrupteur « pour ce site » ne coupe donc rien dans une app que GFS héberge (son adresse n'est pas celle de Grist), et un gros document le fait ramer. GFS ne peut pas toucher au texte d'une app (cadre isolé) : la personne coupe par le bouton de sa barre (réglage « Bouton LanguageTool »), GFS le dit à l'app (`contexte.correcteurs`, événement `correcteurs`, contrats de GFS, 5.2 point 13) et le kit pose sur chaque zone de texte la marque que LanguageTool respecte, **à chaud, sans recharger** (mesuré par le porteur de GFS le 12/11, faits vérifiés de GFS 104).
+
+```js
+import { Correcteurs } from './kit/js/correcteurs.js';
+
+const correcteurs = Correcteurs.start();   // une fois, au démarrage de l'app (le module d'entrée) ; deux appels rendent le même
+await correcteurs.ready;                   // facultatif : le contexte est arrivé et la marque est posée
+correcteurs.refresh();                     // tout repasser (la page a été refaite d'une façon que la pose ne voit pas)
+correcteurs.stop();                        // retire les marques posées
+```
+
+- **Ce qu'elle pose** : `data-lt-active="false"` sur **l'élément éditable lui-même** : `textarea`, `input` de texte (texte, recherche, e-mail, adresse, téléphone : jamais un mot de passe, une case, un nombre) et tout élément `contenteditable` qui ne vaut pas « false ». **Pas sur un conteneur plus haut** : posée sur un élément qui entoure la zone, la marque ne coupe rien (mesuré).
+- **Ce qui naît après** : une fenêtre, un champ de cellule, un éditeur de champ, un `contenteditable` qui devient vrai ou un `type` qui devient du texte : un `MutationObserver` les marque à l'arrivée. Il n'existe que tant que « coupé » est vrai : **zéro coût** quand la personne n'a rien coupé.
+- **Ce qu'elle retire** : quand GFS dit « pas coupé », les marques qu'elle avait posées, et seulement elles : une marque que l'app a posée elle-même n'est jamais touchée ; `correcteurs.stop()` fait de même.
+- **Seule**, ou avec un GFS qui ne dit rien, l'app ne pose aucune marque : les correcteurs restent comme le navigateur les fait.
+- `GfsLink.correcteurs()` et `GfsLink.onCorrecteurs(fn)` donnent le message lu (`{ coupes }`).
+- **Une app qui a son propre lien avec GFS** (Publipostage+) n'importe pas `js/correcteurs.js` (il démarrerait le lien du kit à côté du sien) : elle lit `contexte.correcteurs` et l'événement `correcteurs` dans son lien par `normalizeCorrecteurs` et donne ce lien à la pose.
+
+```js
+import { normalizeCorrecteurs } from './kit/js/correcteurs-message.js';   // dans son lien : lire `contexte.correcteurs` et l'événement `correcteurs` par cette fonction
+import { createCorrecteurs } from './kit/js/correcteurs-pose.js';
+
+// link : { correcteurs() → { coupes } lu par normalizeCorrecteurs ; onCorrecteurs(fn) → de quoi se désabonner ; ready : le contexte de GFS est arrivé }
+const correcteurs = createCorrecteurs({ link: monLien }).start();
+```
+
 ## Le calendrier
 
 Un calendrier que Tuesday et Calendar+ montent chacun chez eux : un mois, une semaine ou un jour, des événements qui s'étendent sur plusieurs jours ou ont une heure, le glisser-déposer pour changer le jour ou l'heure, un plateau « Sans date », une saisie rapide du titre. Écrit dans le dépôt de Calendar+ (`grist-widget-calendar-plus`), rangé ici par GFS : une app qui n'en veut pas ne le charge pas, et rien d'autre dans `js/` ne l'importe.
@@ -236,6 +264,9 @@ Ce que l'outil ne fait pas encore : les fichiers assemblés des extensions (ils 
 | `js/ambiance.js` | `Ambiance.start()` : pose l'ambiance de GFS sur la page de l'app et la suit, avec le lien et le thème du kit (ci-dessus). |
 | `js/ambiance-pose.js` | `createAmbiance({ link, isDark })` : la même pose avec le lien et le mode qu'on lui donne (une app qui a son propre lien avec GFS) ; `paintAmbiance` pour un essai. N'importe ni le lien ni le thème du kit. |
 | `js/ambiance-message.js` | `normalizeAmbiance(message)` : le message d'ambiance lu avec méfiance ; `COLOR_TOKENS` et `SHAPE_TOKENS` : les jetons que l'app connaît. |
+| `js/correcteurs.js` | `Correcteurs.start()` : coupe les correcteurs du navigateur sur la page de l'app (la marque `data-lt-active="false"` sur chaque zone de texte) quand GFS le dit, avec le lien du kit (ci-dessus). |
+| `js/correcteurs-pose.js` | `createCorrecteurs({ link })` : la même pose avec le lien qu'on lui donne (une app qui a son propre lien avec GFS) ; `isEditable` pour un essai. N'importe pas le lien du kit. |
+| `js/correcteurs-message.js` | `normalizeCorrecteurs(message)` : le message `{ coupes }` lu avec méfiance (tout ce qui n'est pas `{ coupes: true }` vaut « pas coupé »). |
 | `css/calendrier.css` | La feuille du calendrier : des jetons seulement, aucune couleur ni `z-index` en dur. À charger après `tokens.css`. |
 | `js/calendrier/index.js` | `creerCalendrier(rappels)` : le calendrier (ci-dessus). Son noyau (`noyau/` : dates civiles, événements, placement des barres, blocs horaires, déplacement) ne connaît ni le DOM ni Grist ; ses vues sont dans `vue/`, ses textes dans `textes.js`. |
 | `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |

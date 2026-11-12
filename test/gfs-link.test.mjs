@@ -735,6 +735,38 @@ test('ambiance : le contexte rappelle l\'abonné, la valeur rendue est une copie
   assert.equal(link.ambiance().clair['--accent'], '#6d4fd6');
 });
 
+// Le message « correcteurs » (5.2, point 13) : `{ coupes }`, la forme du contexte et de l'événement `{ correcteurs: { coupes } }`.
+test('correcteurs : le contexte les donne, l\'événement les change une fois par vrai changement ; tout ce qui n\'est pas { coupes: true } vaut « pas coupé »', async () => {
+  const none = await hosted(CONTEXT);
+  assert.deepEqual(none.link.correcteurs(), { coupes: false }, 'un GFS d\'avant ne dit rien : les correcteurs restent comme le navigateur les fait');
+  const { fake, link } = await hosted({ ...CONTEXT, correcteurs: { coupes: true } });
+  assert.deepEqual(link.correcteurs(), { coupes: true });
+  const seen = [];
+  const stop = link.onCorrecteurs(value => seen.push(value));
+  const event = data => fake.deliver({ gfs: 0, type: 'evenement', nom: 'correcteurs', data });
+  event({ correcteurs: { coupes: true } });
+  event({ correcteurs: { coupes: false } });
+  event({ correcteurs: { coupes: false } });
+  event({ correcteurs: 'oui' });
+  event({ correcteurs: { coupes: true } });
+  event({ correcteurs: { coupes: 'true' } });
+  event({});
+  stop();
+  event({ correcteurs: { coupes: true } });
+  assert.deepEqual(seen, [{ coupes: false }, { coupes: true }, { coupes: false }], 'un abonné par vrai changement (le même message redit n\'en est pas un)');
+  assert.deepEqual(link.correcteurs(), { coupes: true }, 'le lien garde le dernier, même désabonné');
+  link.correcteurs().coupes = false;
+  assert.deepEqual(link.correcteurs(), { coupes: true }, 'la valeur rendue est une copie');
+});
+
+test('correcteurs : l\'app seule ne coupe rien et n\'écoute rien', async () => {
+  const alone = createGfsLink({ host: undefined });
+  assert.deepEqual(alone.correcteurs(), { coupes: false });
+  const calls = [];
+  alone.onCorrecteurs(value => calls.push(value))();
+  assert.deepEqual(calls, []);
+});
+
 test('ambiance : le contexte d\'un GFS d\'avant (sans `ambiance`) et l\'app seule la laissent à null', async () => {
   const { link } = await hosted(CONTEXT);
   assert.equal(link.ambiance(), null);

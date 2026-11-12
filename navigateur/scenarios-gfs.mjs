@@ -125,6 +125,7 @@ export async function gfsLink(env) {
     opens.length === 1 && JSON.stringify(opens[0].args) === JSON.stringify({ app: 'publipostage', fichier: { id: '12', type: 'document' } }) && refused === 'GFS_INTROUVABLE', { opens, refused });
   await files(page, app);
   await ambiance(page, app);
+  await correcteurs(page, app, neighbour);
   await context.close();
 }
 
@@ -220,4 +221,35 @@ async function ambiance(page, app) {
   await send({ ...sample, clair: { ...sample.clair, '--accent': 'red' }, forme: { ...sample.forme, '--radius-md': '1px; background: red', '--wash': 'url(https://example.com/x.png)' } });
   now = await until(async () => { const value = await look(); return value.inline > 0 ? value : null; });
   check('une couleur qui n\'en est pas une et une valeur de forme qui sort de sa déclaration ne sont pas posées, le reste l\'est', Boolean(now) && now.accent === '' && now.radius === '' && now.inline === 19 + Object.keys(sample.forme).length - 3, now);
+}
+
+// Les correcteurs du navigateur (5.2, point 13) : GFS dit « coupé » par l'événement `correcteurs` ; l'app pose `data-lt-active="false"` sur chacune de ses zones de texte (celle-ci elle-même, jamais le conteneur qui
+// l'entoure, jamais un mot de passe), celles qui naissent ensuite la reçoivent à l'arrivée, et « pas coupé » retire tout. Un cadre voisin qui parle avec l'enveloppe de GFS n'est pas lu. Que LanguageTool obéisse à
+// la marque est la mesure du porteur de GFS (12/11) : aucune extension ici.
+async function correcteurs(page, app, neighbour) {
+  const IDS = ['wrap', 'editor', 'area', 'field', 'secret', 'a-dialog', 'a-area', 'a-editor', 'b-dialog', 'b-area', 'b-editor'];
+  const look = () => app.evaluate(ids => Object.fromEntries(ids.map(id => { const node = document.getElementById(id); return [id, node ? node.getAttribute('data-lt-active') : 'absent']; })), IDS);
+  const send = coupes => page.evaluate(value => window.hote.send({ gfs: 0, type: 'evenement', nom: 'correcteurs', data: { correcteurs: { coupes: value } } }), coupes);
+  const marks = (now, wanted) => Object.entries(now).filter(([, mark]) => mark === 'false').map(([id]) => id).join() === wanted.join();
+  let now = await look();
+  check('GFS ne dit rien des correcteurs : l\'app ne pose aucune marque et ses zones restent comme le navigateur les fait', marks(now, []) && now.editor === null && now.area === null && await app.evaluate(() => window.cadre.GfsLink.correcteurs().coupes === false), now);
+  await neighbour.evaluate(() => window.parent[0].postMessage({ gfs: 0, type: 'evenement', nom: 'correcteurs', data: { correcteurs: { coupes: true } } }, '*'));
+  await page.waitForTimeout(300);
+  check('un cadre voisin qui écrit à l\'app avec l\'enveloppe de GFS n\'est pas lu : rien n\'est marqué', marks(await look(), []));
+  await send(true);
+  now = await until(async () => { const value = await look(); return value.editor === 'false' ? value : null; });
+  check('l\'événement « correcteurs » coupé : l\'éditeur, la zone de texte et le champ portent la marque, eux-mêmes ; ni le conteneur de l\'éditeur ni le mot de passe',
+    Boolean(now) && marks(now, ['editor', 'area', 'field']) && now.wrap === null && now.secret === null, now);
+  await app.evaluate(() => window.cadre.addZone('a'));
+  now = await until(async () => { const value = await look(); return value['a-area'] === 'false' ? value : null; });
+  check('une fenêtre qui s\'ouvre ensuite : sa zone de texte et son éditeur sont marqués à l\'arrivée, jamais ce qui les entoure', Boolean(now) && marks(now, ['editor', 'area', 'field', 'a-area', 'a-editor']) && now['a-dialog'] === null, now);
+  await send(false);
+  now = await until(async () => { const value = await look(); return value.editor === null ? value : null; });
+  check('« pas coupé » retire toutes les marques posées : les correcteurs reviennent', Boolean(now) && marks(now, []), now);
+  await app.evaluate(() => window.cadre.addZone('b'));
+  await page.waitForTimeout(300);
+  check('pas coupé : une zone qui naît n\'est pas marquée (rien ne tourne)', marks(await look(), []));
+  await send(true);
+  now = await until(async () => { const value = await look(); return value['b-editor'] === 'false' ? value : null; });
+  check('recoupé : toutes les zones, celles de la fenêtre comprises, reprennent la marque', Boolean(now) && marks(now, ['editor', 'area', 'field', 'a-area', 'a-editor', 'b-area', 'b-editor']), now);
 }

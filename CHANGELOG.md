@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.22.0 : couper les correcteurs du navigateur quand GFS le dit (12/11/2026)
+
+Demande du porteur de GFS (12/11) : un bouton de la barre de GFS pour couper LanguageTool dans l'app. LanguageTool juge chaque cadre d'après son adresse : son interrupteur « pour ce site » ne coupe rien dans une app hébergée par GFS. Le porteur a mesuré (Firefox 153) qu'il obéit à `data-lt-active="false"` posée sur la zone de texte elle-même, à chaud et sans recharger ; GFS dit « coupé » à l'app (`contexte.correcteurs`, événement `correcteurs`, contrats de GFS 5.2, point 13 ; faits vérifiés de GFS 104) et le kit pose la marque. Ajout facultatif : rien ne change pour une app qui ne l'appelle pas.
+
+- **`Correcteurs.start()`** (`js/correcteurs.js`) : une fois, au démarrage de l'app. Marque chaque `textarea`, `input` de texte et `contenteditable` de la page (jamais un conteneur : la marque ne vaut que sur l'élément éditable lui-même), et chaque zone qui naît après (`MutationObserver`, qui n'existe que tant que « coupé » est vrai). Retire ses marques, et seulement elles, quand GFS dit « pas coupé ».
+- **`createCorrecteurs({ link })`** (`js/correcteurs-pose.js`) et **`normalizeCorrecteurs`** (`js/correcteurs-message.js`) : la même pose pour une app qui a son propre lien avec GFS (Publipostage+), comme `createAmbiance` et `normalizeAmbiance`.
+- **`GfsLink.correcteurs()` et `GfsLink.onCorrecteurs(fn)`** : le message lu, `{ coupes }` (`{ coupes: false }` seule ou avec un GFS qui ne dit rien) ; un abonné par vrai changement.
+- **Essais** : `test/correcteurs.test.mjs` (douze : le message, ce qui est une zone de texte, la marque au départ, les zones qui naissent après, le retrait sans toucher à une marque de l'app, le contexte tardif, `refresh` et `stop`) et deux de plus dans `test/gfs-link.test.mjs` ; les 562 du kit sont verts. **Dans un vrai Chromium** (`navigateur/scenarios-gfs.mjs`, le cadre isolé comme chez GFS, sous la politique d'une app hébergée, le vrai lien et un vrai `MutationObserver`) : sept vérifications de plus (rien dit : rien posé ; un cadre voisin n'est pas lu ; coupé : l'éditeur, la zone de texte et le champ marqués, ni le conteneur ni le mot de passe ; une fenêtre qui s'ouvre après ; « pas coupé » retire tout ; recoupé), 35 vérifications au total pour le lien.
+
 ## 0.21.0 : le moteur de partage 2.7.0, repris de Sync+ (11/11/2026)
 
 Sync+ a livré le moteur **2.7.0** (`fe318cc`, sommet de sa page `359e502`) : la copie du kit passe de 2.6.1 à **2.7.0**. Ajout facultatif, rien ne change sans lui : le port garde ses vingt noms dans le même ordre, le texte des formules de `Synchro` est le même (`test/synchro-formulas-golden.test.mjs`), aucune table ni colonne de plus pour une app qui ne l'utilise pas.
