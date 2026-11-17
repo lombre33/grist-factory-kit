@@ -1,17 +1,19 @@
 // CIBLE : ce que le schéma dit des exports reçus (journaux, destinations, clés de signature), en
 // fonctions pures sur le schéma lu (voir readSchema dans grist.js). Les écritures sont dans
 // target/journals.js.
-import { JOURNAL_PREFIX, KEY_COL, LIST_COL, SIG_KEY, columnNote, noteAction } from './common.js';
+import { JOURNAL_PREFIX, KEY_COL, LIST_COL, SIG_KEY, columnNote, isUserTable, noteAction } from './common.js';
 import { destColumns } from './journal.js';
 import { columnOptions, fillOptions, isChoice, ownsColumn, receivedChoices, replaceOptions, ruleStyle, ruleStyles, sentRules, withRuleStyles } from './options.js';
 import { parseRule, printRule } from './rules.js';
+import { destContext } from './schema.js';
 
 // Note d'un journal : JSON dans la description de sa colonne Synchro_Ids (description de référence).
 // - invitation : id, export, name, secret (pour le code de la réponse), from { email, docId,
 //   docName }, mode (absent : réponse ; 'echange', 'public' avec base, l'adresse de la SOURCE),
 //   renforce, reserve (journal réservé aux éditeurs, voir acl.js), reserved (règle posée), archive
-//   (une ligne effacée à la SOURCE reste ici, cochée) et verrou (tables reçues en lecture seule,
-//   voir target/options.js), pub et
+//   (une ligne effacée à la SOURCE reste ici, cochée), verrou (tables reçues en lecture seule,
+//   voir target/options.js), ask (les colonnes que la SOURCE ajoute attendent l'accord de la personne, voir
+//   structure.js), pub et
 //   pubSource (clés publiques de la réponse et de l'invitation, pour le code de la réponse et son
 //   code de contrôle ; jamais de clé privée, voir linkKeys) ;
 // - Échange : retour (journal de retour, chez qui a invité), hook (webhook du participant) ;
@@ -26,7 +28,7 @@ export const journalNote = (schema, tableId) => columnNote(listColumn(schema, ta
 export const journalNoteAction = (schema, tableId, note) => noteAction(listColumn(schema, tableId), note);
 
 // Ce que la note garde des options d'une réception (rien pour une option décochée).
-export const optionsNote = ({ archive, verrou }) => ({ ...(archive ? { archive: true } : {}), ...(verrou ? { verrou: true } : {}) });
+export const optionsNote = ({ archive, verrou, ask }) => ({ ...(archive ? { archive: true } : {}), ...(verrou ? { verrou: true } : {}), ...(ask ? { ask: true } : {}) });
 
 // Journaux d'exports reçus : { journal, note } (note : voir plus haut), dont la note dit d'où ils
 // viennent et où va chaque table.
@@ -68,7 +70,7 @@ export function missingColumns(schema, dest, columns, map = {}) {
 // Listes de choix et formats reçus, ajoutés à ce qui manque aux colonnes de la destination que la
 // CIBLE a créées (voir ownsColumn et fillOptions). `columns` : colonnes envoyées, avec `opts`.
 export function optionActions(schema, entry, columns) {
-  const here = new Map((schema.columns(entry.dest) || []).map(c => [c.colId, c]));
+  const { here } = destContext(schema, entry);
   return destColumns(columns).filter(c => c.opts).flatMap((c) => {
     const column = here.get((entry.map || {})[c.id] || c.id);
     if (!column || !ownsColumn(entry.own, c.id, column)) return [];
@@ -80,7 +82,7 @@ export function optionActions(schema, entry, columns) {
 // « Reprendre la mise en forme » : le style de chaque colonne reçue prend celui de la SOURCE (voir
 // replaceOptions), colonnes créées ici ou non. `columns` : colonnes envoyées, avec `opts`.
 export function restyleOptionActions(schema, entry, columns) {
-  const here = new Map((schema.columns(entry.dest) || []).map(c => [c.colId, c]));
+  const { here } = destContext(schema, entry);
   return destColumns(columns).flatMap((c) => {
     const column = here.get((entry.map || {})[c.id] || c.id);
     const text = column ? replaceOptions(column.type, column.widgetOptions, c.opts || {}) : null;
@@ -98,22 +100,31 @@ export function restyleOptionActions(schema, entry, columns) {
 export function planRules(schema, entry, columns, { replace = false } = {}) {
   const cols = schema.columns(entry.dest) || [];
   const here = new Map(cols.map(c => [c.colId, c]));
-  const byRow = new Map(cols.map(c => [c.id, c]));
   const map = entry.map || {};
-  const rename = id => (here.has(map[id] || id) ? map[id] || id : null);
-  const decided = new Set(entry.styled || []);
-  const own = new Set(Array.isArray(entry.own) ? entry.own : []);
+  const context = {
+    here, map, replace, byRow: new Map(cols.map(c => [c.id, c])),
+    rename: id => (here.has(map[id] || id) ? map[id] || id : null),
+    decided: new Set(entry.styled || []), own: new Set(Array.isArray(entry.own) ? entry.own : []),
+  };
   const todo = [];
   const settled = [];
-  for (const c of destColumns(columns)) {
-    const rules = sentRules(c.opts).map(r => ({ formula: printRule(parseRule(r.when), rename), style: ruleStyle(r) })).filter(r => r.formula);
-    const column = here.get(map[c.id] || c.id);
-    if (!rules.length || !column || (!replace && (decided.has(c.id) || !own.has(c.id)))) continue;
-    const old = (Array.isArray(column.rules) ? column.rules.slice(1) : []).map(ref => (byRow.get(ref) || {}).colId).filter(Boolean);
-    if (!replace && (old.length || ruleStyles(column.widgetOptions).length)) settled.push(c.id);
-    else todo.push({ id: c.id, column, rules, old: replace ? old : [] });
+  for (const sent of destColumns(columns)) {
+    const planned = planColumnRules(sent, context);
+    if (!planned) continue;
+    if (planned.settled) settled.push(sent.id);
+    else todo.push(planned.todo);
   }
   return { todo, settled };
+}
+
+// Les règles d'une colonne envoyée : à poser (`todo`) ou déjà là (`settled`) ; null quand la colonne n'est pas à traiter.
+function planColumnRules(c, { here, map, replace, byRow, rename, decided, own }) {
+  const rules = sentRules(c.opts).map(r => ({ formula: printRule(parseRule(r.when), rename), style: ruleStyle(r) })).filter(r => r.formula);
+  const column = here.get(map[c.id] || c.id);
+  if (!rules.length || !column || (!replace && (decided.has(c.id) || !own.has(c.id)))) return null;
+  const old = (Array.isArray(column.rules) ? column.rules.slice(1) : []).map(ref => (byRow.get(ref) || {}).colId).filter(Boolean);
+  if (!replace && (old.length || ruleStyles(column.widgetOptions).length)) return { settled: true };
+  return { todo: { id: c.id, column, rules, old: replace ? old : [] } };
 }
 
 // Première étape de la pose des règles : les colonnes cachées d'ici à retirer, puis une règle vide par règle
@@ -147,7 +158,7 @@ export const madeHelpers = (owners, retValues) => owners.map((owner, k) => (owne
 // ou colonne sans liste) : la liste se complète des valeurs reçues (voir receivedChoices).
 // `rows` : fonction qui rend les dernières versions reçues, lues seulement s'il y a une colonne.
 export function valueChoiceActions(schema, entry, columns, rows) {
-  const here = new Map((schema.columns(entry.dest) || []).map(c => [c.colId, c]));
+  const { here } = destContext(schema, entry);
   const wanted = destColumns(columns).filter(c => isChoice(c.type) && !(c.opts && c.opts.choices)).map(c => ({ c, column: here.get((entry.map || {})[c.id] || c.id) }))
     .filter(({ c, column }) => column && isChoice(column.type) && ownsColumn(entry.own, c.id, column));
   const received = wanted.length ? rows() : [];
@@ -157,9 +168,10 @@ export function valueChoiceActions(schema, entry, columns, rows) {
   });
 }
 
-// Clé qui signe les envois d'un export reçu (voir trust.js) : dans la description de la colonne
-// id_sync de ses destinations ({ signature: { <place>: <clé> } }), pas dans la note du journal,
-// que la clé du formulaire peut lire. La place est l'export ; pour un journal de retour d'Échange,
+// Clé qui signe les envois d'un export reçu (voir trust.js) : dans la note (les options, voir columnNote)
+// de la colonne id_sync de ses destinations ({ signature: { <place>: <clé> } }), pas dans la note du
+// journal, que la clé du formulaire peut lire. Les options d'id_sync sont cachées aux lecteurs par une règle
+// d'accès (keyAclRules). La place est l'export ; pour un journal de retour d'Échange,
 // le journal lui-même : chaque participant signe avec sa propre clé, donnée dans sa réponse.
 export const keySlot = (journal, note) => (note.retour ? journal : note.export);
 const keyColumn = (schema, table) => (schema.columns(table) || []).find(c => c.colId === KEY_COL);
@@ -167,6 +179,9 @@ function keysOf(column) {
   const { signature } = columnNote(column) || {};
   return signature && typeof signature === 'object' ? signature : {};
 }
+// Tables d'ici dont la colonne id_sync porte une clé de signature : celles dont la colonne est cachée aux lecteurs.
+export const signedTables = schema => schema.tableIds.filter(isUserTable)
+  .filter(table => Object.keys(keysOf(keyColumn(schema, table))).length > 0).sort();
 // Nom actuel de la destination d'une table reçue : renommée ici, elle se retrouve par son numéro dans Grist (`refs`,
 // voir followRenames). Sans cela, renommer la seule table d'un export faisait perdre la clé (donc la réception).
 const destNow = (schema, tb) => {
@@ -182,4 +197,12 @@ export function storeKeyActions(schema, tables, slot, key) {
   if (!SIG_KEY.test(key || '')) return [];
   return tables.map(table => keyColumn(schema, table)).filter(c => c && keysOf(c)[slot] !== key)
     .map(c => noteAction(c, { signature: { ...keysOf(c), [slot]: key } }));
+}
+// Clé retirée de sa place dans les destinations `tables` (retour à l'ancien fonctionnement, voir reinforce.js).
+export function dropKeyActions(schema, tables, slot) {
+  return tables.map(table => keyColumn(schema, table)).filter(c => c && slot in keysOf(c))
+    .map((c) => {
+      const { [slot]: gone, ...rest } = keysOf(c);
+      return noteAction(c, Object.keys(rest).length ? { signature: rest } : null);
+    });
 }

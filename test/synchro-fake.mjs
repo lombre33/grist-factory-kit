@@ -2,7 +2,7 @@
 // colonnes et lignes, et les actions que le moteur envoie (AddTable, BulkAddRecord…). Il ne calcule
 // aucune formule (sauf `NOW()` et `user.Email` à l'ajout d'une ligne, que le journal utilise) : les
 // essais y posent eux-mêmes ce que Grist aurait calculé. `fakePort` en fait un port du moteur
-// (engine/port.js) qui n'a rien de commun avec celui de Sync+.
+// (engine/port.js) qui n'a rien de commun avec celui de syncPlus.
 import { schemaFrom } from '../js/synchro/logic/schema.js';
 import { parseWebhookUrl } from '../js/synchro/logic/codes.js';
 
@@ -41,7 +41,7 @@ export function fakeDoc({ docId = 'abcdefghijkl', email = 'test@fake.local', nam
   const columnRows = () => [...tables.values()].flatMap(tb => tb.columns);
 
   const records = {
-    _grist_Tables: () => [...tables].map(([tableId, tb]) => ({ id: tb.id, tableId, primaryViewId: 0, summarySourceTable: 0 })),
+    _grist_Tables: () => [...tables].map(([tableId, tb]) => ({ id: tb.id, tableId, primaryViewId: 0, summarySourceTable: 0, rawViewSectionRef: tb.rawSection || 0 })),
     _grist_Tables_column: columnRows,
   };
 
@@ -79,10 +79,16 @@ export function fakeDoc({ docId = 'abcdefghijkl', email = 'test@fake.local', nam
     return { viewRef: view, sectionRef: section };
   };
 
+  // Une section « Personnalisée » sur une page existante (`viewRef`) : ses options sont écrites ensuite, comme Grist les range.
+  const createCustomSection = (tableRef, viewRef) => {
+    const section = runMeta('AddRecord', '_grist_Views_section', [null, { parentId: viewRef, parentKey: 'custom', tableRef, options: '' }]);
+    return { tableRef, viewRef, sectionRef: section };
+  };
+
   const run = (action) => {
     const [name, tableId, ...args] = action;
     log.push(action);
-    if (name === 'CreateViewSection') return createFormSection(tableId);
+    if (name === 'CreateViewSection') return args[1] === 'custom' && args[0] ? createCustomSection(tableId, args[0]) : createFormSection(tableId);
     if (tableId === '_grist_Tables_column') {
       const column = columnRows().find(c => c.id === args[0]);
       if (name === 'UpdateRecord' && column) { Object.assign(column, args[1]); return null; }
@@ -94,6 +100,8 @@ export function fakeDoc({ docId = 'abcdefghijkl', email = 'test@fake.local', nam
         if (tables.has(tableId)) throw new Error(`Table already exists "${tableId}"`);
         const table = { id: nextTable++, columns: [], rows: [], next: 1 };
         tables.set(tableId, table);
+        // Comme Grist, la table a une section de données brutes ; sa description est celle de la table.
+        table.rawSection = runMeta('AddRecord', '_grist_Views_section', [null, { tableRef: table.id, parentKey: 'record', description: '' }]);
         for (const { id, ...info } of args[0]) addColumn(table, id, info);
         return { table_id: tableId };
       }
@@ -130,6 +138,8 @@ export function fakeDoc({ docId = 'abcdefghijkl', email = 'test@fake.local', nam
         column.rules = column.rules ? [...column.rules, helper.id] : ['L', helper.id];
         return { colRef: helper.id, colId };
       }
+      // Colonne qui affiche une autre colonne de la table visée : rien à calculer ici (visibleCol est écrit à part).
+      case 'SetDisplayFormula': return null;
       case 'RenameTable': tables.set(args[0], need(tableId)); tables.delete(tableId); return null;
       case 'RemoveTable': need(tableId); tables.delete(tableId); return null;
       case 'AddRecord': return addRow(need(tableId), args[1], args[0]);
@@ -217,7 +227,7 @@ export function fakePort(doc, { owner = true, world = null } = {}) {
     createWebhook: abroad ? async fields => abroad.create(fields) : unsupported('createWebhook'),
     webhookConditions: async () => (abroad ? abroad.conditions() : new Map()),
     setWebhookEnabled: abroad ? async (id, enabled) => abroad.patch(id, { enabled }) : unsupported('setWebhookEnabled'),
-    renameWebhook: abroad ? async (id, name) => abroad.patch(id, { name }) : async () => {},
+    renameWebhook: abroad ? async (id, name, memo) => abroad.patch(id, memo === undefined ? { name } : { name, memo }) : async () => {},
     deleteWebhook: abroad ? async id => abroad.remove(id) : unsupported('deleteWebhook'),
     deleteWebhookWithNotice: unsupported('deleteWebhookWithNotice'),
     clearWebhookQueue: async () => {},
@@ -233,15 +243,16 @@ export function fakePort(doc, { owner = true, world = null } = {}) {
   };
 }
 
-// Une SOURCE (table Contacts d'une ligne) et une CIBLE neuves sur le même monde. `tag` (deux caractères) range les
-// identifiants de document d'un fichier d'essai : deux essais ne partagent jamais le même (`n` : le rang de la paire).
+// Une SOURCE (table Contacts d'une ligne, sauf `contacts: false`) et une CIBLE neuves sur le même monde. `tag` (deux caractères) range
+// les identifiants de document d'un fichier d'essai : deux essais ne partagent jamais le même (`n` : le rang de la paire). `source` et
+// `target` complètent les réglages de chaque document (langue, nom…).
 let pairs = 0;
-export function fakePair(tag) {
+export function fakePair(tag, { source: sourceOptions = {}, target: targetOptions = {}, contacts = true } = {}) {
   const world = fakeWorld();
   const n = String(++pairs).padStart(2, '0');
-  const source = fakeDoc({ docId: `sourcedoc${tag}${n}x`, name: 'Annuaire', email: 'source@fake.local' });
-  const target = fakeDoc({ docId: `targetdoc${tag}${n}x`, name: 'Réception', email: 'cible@fake.local' });
-  source.addTable('Contacts', [{ id: 'Nom', type: 'Text' }], [{ Nom: 'Alice' }]);
+  const source = fakeDoc({ docId: `sourcedoc${tag}${n}x`, name: 'Annuaire', email: 'source@fake.local', ...sourceOptions });
+  const target = fakeDoc({ docId: `targetdoc${tag}${n}x`, name: 'Réception', email: 'cible@fake.local', ...targetOptions });
+  if (contacts) source.addTable('Contacts', [{ id: 'Nom', type: 'Text' }], [{ Nom: 'Alice' }]);
   return { world, source, target, n };
 }
 
@@ -284,7 +295,7 @@ export function fakeWorld() {
       return {
         list: () => list.map(h => ({ id: h.id, fields: { ...h.fields }, usage: null })),
         create: ({ name, memo, url, tableId, condition }) => {
-          const id = ++counter;
+          const id = `hook-${++counter}`; // une chaîne, comme chez Grist (les clés de signature se rangent sous son identifiant)
           list.push({ id, fields: { name, memo, url, tableId, condition, enabled: true } });
           return id;
         },

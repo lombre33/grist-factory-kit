@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startEngine } from '../js/synchro/index.js';
-import { EXPORT_COL, KEY_COL, KIND, LOT_COL, SCHEMA_COL, TABLE_COL, TYPE_COL } from '../js/synchro/logic/common.js';
+import { EXPORT_COL, KIND, LOT_COL, SCHEMA_COL, TABLE_COL, TYPE_COL } from '../js/synchro/logic/common.js';
 import { signText } from '../js/synchro/logic/trust.js';
 import { readSchema } from '../js/synchro/port.js';
 import { readSourceNote, rememberDocName, sourceDocName, syncRows } from '../js/synchro/source/synchro.js';
@@ -18,6 +18,7 @@ import { receivedJournals } from '../js/synchro/logic/received.js';
 import { diagnostic } from '../js/synchro/diagnostic.js';
 import { format } from './synchro-i18n.mjs';
 import { fakeDoc, fakeWorld } from './synchro-fake.mjs';
+import { receivedNames } from './synchro-moteur-wire.mjs';
 
 const world = fakeWorld();
 const source = fakeDoc({ docId: 'sourcedoc0001x', name: 'Annuaire de la source', email: 'source@fake.local' });
@@ -126,20 +127,19 @@ test('SOURCE puis CIBLE : un envoi de bout en bout, sans écran', async (t) => {
     await send(story.accepted.keys.down, [['k1', 100, false, { Nom: 'Alice', Ville: 'Lyon' }], ['k2', 100, false, { Nom: 'Bob', Ville: 'Nice' }]]);
     as(target);
     await consolidateAll();
-    const names = () => target.rows('Annuaire_recu').filter(r => r.Supprime !== true).map(r => `${r[KEY_COL]}:${r.Nom}:${r.Ville}`).sort();
-    assert.deepEqual(names(), ['k1:Alice:Lyon', 'k2:Bob:Nice']);
+    assert.deepEqual(receivedNames(target, 'Annuaire_recu'), ['k1:Alice:Lyon', 'k2:Bob:Nice']);
 
     // Un lot signé avec une autre clé (celle d'un autre destinataire, ou inventée) n'est pas recopié.
     await send('0'.repeat(64), [['k9', 200, false, { Nom: 'Intrus', Ville: 'Ailleurs' }]]);
     await consolidateAll({ reread: true });
-    assert.deepEqual(names(), ['k1:Alice:Lyon', 'k2:Bob:Nice'], 'le lot mal signé est rejeté');
+    assert.deepEqual(receivedNames(target, 'Annuaire_recu'), ['k1:Alice:Lyon', 'k2:Bob:Nice'], 'le lot mal signé est rejeté');
     assert.deepEqual(target.rows('Journal_Annuaire').filter(r => r[TYPE_COL] === KIND.lot), [], 'et il ne reste pas dans le journal');
 
     // Une version plus récente, bien signée : la destination suit.
     target.tick();
     await send(story.accepted.keys.down, [['k1', 300, false, { Nom: 'Alice', Ville: 'Paris' }]]);
     await consolidateAll({ reread: true });
-    assert.deepEqual(names(), ['k1:Alice:Paris', 'k2:Bob:Nice']);
+    assert.deepEqual(receivedNames(target, 'Annuaire_recu'), ['k1:Alice:Paris', 'k2:Bob:Nice']);
   });
 
   await t.test('CIBLE : une nouvelle invitation du même document reprend la même réception', async () => {
@@ -178,7 +178,7 @@ test('SOURCE puis CIBLE : un envoi de bout en bout, sans écran', async (t) => {
     const leaks = ['source@fake.local', 'cible@fake.local', key, story.exp.id, story.entry.id, 'sourcedoc0001x', 'targetdoc0002x'];
     withText(source, 'fr');
     const sent = await diagnostic({ version: '9.9.9', served: 'essai', readOnly: false, agent: 'Node' });
-    assert.match(sent, /^Diagnostic Synchro Grist 9\.9\.9 \(essai\)/);
+    assert.match(sent, /^Diagnostic Sync\+ 9\.9\.9 \(essai\)/);
     assert.match(sent, /Instance : https:\/\/fake\.example/);
     assert.match(sent, /Droits : propriétaire/);
     assert.match(sent, new RegExp(`Export ${story.exp.id.slice(0, 8)} « Annuaire » \\(sens unique\\)`));
@@ -186,7 +186,7 @@ test('SOURCE puis CIBLE : un envoi de bout en bout, sans écran', async (t) => {
     assert.match(sent, /destinataire [0-9a-z-]+ : actif/);
     withText(target, 'en');
     const received = await diagnostic({ version: '9.9.9', served: 'essai', readOnly: true, agent: 'Node' });
-    assert.match(received, /^Synchro Grist diagnostic 9\.9\.9 \(essai\)/);
+    assert.match(received, /^Sync\+ diagnostic 9\.9\.9 \(essai\)/);
     assert.match(received, /Access: reader/);
     assert.match(received, /Reception Journal_Annuaire \(export /);
     assert.match(received, /tables: Contacts → Annuaire_recu/);

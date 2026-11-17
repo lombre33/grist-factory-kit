@@ -4,7 +4,8 @@
 //   invitations: [{ id, export, hash, at, renforce, journal, ready, pub, prive }],
 //   pauses: [{ hook, export, at, columns }], fichiers: { <export>: { f, h, p } },
 //   historique: { <export>: [{ at, kind, who, n }] },
-//   lignes: { <export>: { at, n: { <table>: nombre de lignes } } } }.
+//   lignes: { <export>: { at, n: { <table>: nombre de lignes } } },
+//   dest: { <jeton de mémo>: { m: « e-mail · document · équipe/nom », at } } }.
 // Chaque opération rend une nouvelle note, sans toucher à celle qu'elle reçoit.
 import { cleanLabel } from './codes.js';
 
@@ -41,11 +42,11 @@ export function dropExport(note, id) {
 // rattrapages, pauses, destinataires), du plus récent au plus ancien, les EVENTS_KEPT derniers.
 // Les envois ordinaires partent de Grist sans le widget : l'état de chaque destinataire (dernier
 // succès, erreur) les dit. `event` : { at (secondes), kind ('join', 'resend', 'catchup', 'unblock',
-// 'pause', 'autopause', 'resume', 'revoke', 'edit', 'editSent', 'shrink'), who (destinataire, ou table pour
+// 'pause', 'autopause', 'resume', 'revoke', 'edit', 'editSent', 'shrink', 'reinforce'), who (destinataire, ou table pour
 // 'shrink'), n (lignes ou tables) }.
 export const EVENTS_KEPT = 30;
 const WHO_MAX = 80;
-const EVENT_KINDS = ['join', 'resend', 'catchup', 'unblock', 'pause', 'autopause', 'resume', 'revoke', 'edit', 'editSent', 'shrink'];
+const EVENT_KINDS = ['join', 'reinforce', 'resend', 'catchup', 'unblock', 'pause', 'autopause', 'resume', 'revoke', 'edit', 'editSent', 'shrink'];
 export function addEvent(note, exportId, { at, kind, who = '', n = 0 }) {
   const event = { at, kind, ...(who ? { who: String(who).slice(0, WHO_MAX) } : {}), ...(n ? { n } : {}) };
   const before = (note.historique || {})[exportId];
@@ -54,11 +55,20 @@ export function addEvent(note, exportId, { at, kind, who = '', n = 0 }) {
 // Événements lisibles d'un export. La note peut avoir été retouchée à la main ou écrite par une autre
 // version : un élément mal formé est écarté, jamais d'erreur à l'affichage.
 const readable = e => e && typeof e === 'object' && EVENT_KINDS.includes(e.kind) && Number.isFinite(e.at) && e.at > 0 && e.at < 4e9;
-export function eventsOf(note, exportId) {
+// `all` : aussi les repères d'un historique effacé (voir clearEvents), qui comptent encore sans rien montrer.
+export function eventsOf(note, exportId, { all = false } = {}) {
   const list = (note.historique || {})[exportId];
-  return (Array.isArray(list) ? list : []).filter(readable).map(({ at, kind, who, n }) => ({
-    at, kind, ...(who ? { who: String(who).slice(0, WHO_MAX) } : {}), ...(Number.isFinite(n) && n ? { n } : {}),
+  return (Array.isArray(list) ? list : []).filter(readable).filter(e => all || !e.cleared).map(({ at, kind, who, n, cleared }) => ({
+    at, kind, ...(who ? { who: String(who).slice(0, WHO_MAX) } : {}), ...(Number.isFinite(n) && n ? { n } : {}), ...(cleared ? { cleared: true } : {}),
   }));
+}
+
+// Historique des envois effacé sur demande (bouton de la SOURCE). Les ajouts et les retraits de destinataire restent comme
+// repères, sans nom ni nombre et sans rien montrer : ils servent à voir un destinataire dont le webhook a été supprimé à la main
+// (vanishedRecipients) et à dire qu'un export a des clés de signature (unkeyedRecipients). Tout le reste est oublié.
+export function clearEvents(note, exportId) {
+  const marks = eventsOf(note, exportId, { all: true }).filter(e => e.kind === 'join' || e.kind === 'revoke').map(({ at, kind }) => ({ at, kind, cleared: true }));
+  return { ...note, historique: { ...(note.historique || {}), [exportId]: marks } };
 }
 
 // Destinataires ajoutés par le widget (événement `join`) et ni révoqués par lui (`revoke`) ni présents parmi les
@@ -131,4 +141,43 @@ export function recentDrops(events, now) {
   const seen = new Set();
   return events.filter(e => e.kind === 'shrink' && e.who && now - e.at < DROP_SHOWN_S && !seen.has(e.who) && seen.add(e.who))
     .map(e => ({ table: e.who, n: e.n || 0, at: e.at }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Destinataires. Le mémo d'un webhook se lit dans les métadonnées du document (`_grist_Triggers`), que Grist montre à
+// toute personne qui lit le document, lien public compris : il n'y met donc qu'un jeton (`r-` et douze chiffres
+// hexadécimaux), et la fiche du destinataire (e-mail, document, équipe et nom) reste dans cette note, que les lecteurs
+// ne lisent pas. `identifyHooks` remet la fiche dans les webhooks que lisent les écrans et le moteur.
+
+export const MEMO_TOKEN = /^r-[0-9a-f]{12}$/;
+export const isMemoToken = memo => MEMO_TOKEN.test(String(memo || ''));
+
+// La note, avec la fiche `memo` rangée sous `token` (heure `at`, en secondes).
+export const putDest = (note, token, memo, at) => ({ ...note, dest: { ...note.dest, [token]: { m: String(memo), at } } });
+
+// Fiche rangée sous `token`, ou null.
+export function destOf(note, token) {
+  const entry = note.dest && Object.hasOwn(note.dest, token) ? note.dest[token] : null;
+  return entry && typeof entry.m === 'string' ? entry.m : null;
+}
+
+// Webhooks dont le mémo est un jeton connu de la note : leur mémo devient la fiche (le jeton reste dans `memoToken`).
+// Les autres (mémo d'avant la 4.0, ou jeton inconnu) sont rendus tels quels.
+export const identifyHooks = (hooks, note) => hooks.map((h) => {
+  const memo = h.fields.memo;
+  const card = isMemoToken(memo) ? destOf(note, memo) : null;
+  return card === null ? h : { ...h, fields: { ...h.fields, memo: card, memoToken: memo } };
+});
+
+// Jetons de la note qu'aucun webhook ne porte (`memos` : les mémos des webhooks, tels que Grist les garde) et posés il y a
+// plus de `grace` secondes : un destinataire révoqué, ou un jeton posé avant un webhook qui n'a pas pu se créer. Le délai
+// laisse à un onglet le temps de créer son webhook après avoir rangé la fiche.
+export const staleDest = (note, memos, now, grace) => Object.entries(note.dest || {})
+  .filter(([token, entry]) => !memos.has(token) && !(Number.isFinite(entry && entry.at) && now - entry.at < grace)).map(([token]) => token);
+
+export function dropDest(note, tokens) {
+  if (!tokens.length) return note;
+  const { dest, ...rest } = note;
+  const left = Object.fromEntries(Object.entries(dest || {}).filter(([token]) => !tokens.includes(token)));
+  return Object.keys(left).length ? { ...rest, dest: left } : rest;
 }

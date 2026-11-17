@@ -1,16 +1,37 @@
 // SOURCE : un export (des tables, leurs colonnes, un filtre de lignes facultatif) et ses lignes
 // dans Synchro ; ses destinataires (un webhook filtré sur l'export) ; ce qu'un Échange renvoie. Les
 // règles d'accès du lien public sont dans acl.js.
-import { AUTHOR_COL, DELETE_COL, EXPORT_COL, HEX16, KEY_COL, KIND, ORDER_COL, RECALC_COL, RESEND_COL, SCHEMA_COL, SYNC_TABLE, TABLE_COL, TYPE_COL, is, parseJson } from './common.js';
+import { AUTHOR_COL, DELETE_COL, EXPORT_COL, HEX16, KEY_COL, KIND, ORDER_COL, RECALC_COL, RESEND_COL, SCHEMA_COL, SENT_TYPE, SYNC_TABLE, TABLE_COL, TYPE_COL, is, parseJson } from './common.js';
 import { rowFilter } from './filters.js';
 import { columnOptions, ruleStyle, ruleStyles } from './options.js';
 import { currencyOf } from './docformat.js';
 import { parseRule, ruleRefs } from './rules.js';
+import { cleanNote, noteSent, tableNoteOf, withTableNote } from './descriptions.js';
+import { isPos, layoutSent, modelSection, withLayout } from './layout.js';
+import { formulasOffered, sourceDefault, sourceFormula, withFormulas } from './column-formulas.js';
 
 // Dernier envoi à un destinataire coupé (révoqué, export supprimé, Échange arrêté) : une ligne
 // « fin » de son export, envoyée directement à l'adresse de son webhook. Sans elle, la CIBLE, qui ne
 // lit pas la SOURCE, ne saurait jamais que plus rien n'arrivera.
 export const endNotice = exportId => [{ [EXPORT_COL]: exportId, [TYPE_COL]: KIND.end }];
+
+// Colonnes de données et de formules d'une table SOURCE : hors colonnes de la synchro et colonnes internes de Grist.
+const INTERNAL = new Set(['manualSort', KEY_COL, ORDER_COL, RECALC_COL, DELETE_COL]);
+const dataColumns = cols => cols.filter(c => !INTERNAL.has(c.colId) && !c.colId.startsWith('gristHelper_'));
+
+// Type sous lequel une colonne part, ou null si elle ne part pas. Une Référence part en texte, un rang
+// (PositionNumber) en nombre, un identifiant de ligne (Id) en entier. Un Blob ne part pas (décision d'Antoine,
+// 12 novembre) : Grist n'écrit des octets dans une colonne Blob par aucune de ses API (seule une formule Python en
+// fabrique), la CIBLE ne pourrait pas les recevoir fidèlement. Tout type que `SENT_TYPE` ne connaît pas est dans le même cas :
+// avant, une telle colonne cochée rendait l'invitation illisible chez la CIBLE (`codeInvalid`).
+const LIFTED = { PositionNumber: 'Numeric', Id: 'Int' };
+export function sentType(type) {
+  const sent = /^Ref(List)?:/.test(type) ? 'Text' : (Object.hasOwn(LIFTED, type) ? LIFTED[type] : type);
+  return is(SENT_TYPE, sent) ? sent : null;
+}
+
+// Colonnes d'une table SOURCE qui ne partent pas faute d'un type que la CIBLE sait recevoir : [{ id, label, type }].
+export const unsentColumns = cols => dataColumns(cols).filter(c => !sentType(c.type)).map(c => ({ id: c.colId, label: c.label || c.colId, type: c.type }));
 
 // Colonnes qu'une table SOURCE peut envoyer : toutes ses colonnes de données et formules, hors
 // colonnes de la synchro et colonnes internes de Grist. Une Référence part comme le texte qu'elle
@@ -18,13 +39,13 @@ export const endNotice = exportId => [{ [EXPORT_COL]: exportId, [TYPE_COL]: KIND
 // comme la liste de ses fichiers (voir files.js). `opts` : liste de choix et format de la colonne
 // (voir options.js), s'il y en a. Avec `extras` (l'export envoie « la mise en forme des colonnes »), `opts`
 // porte aussi le style de l'en-tête, la monnaie résolue d'après `doc` (langue et monnaie du document, voir
-// docformat.js) et les règles de mise en forme conditionnelle ; chaque colonne est alors marquée `fmt`.
-export function exportableColumns(cols, { extras = false, doc = null } = {}) {
-  const skip = new Set(['manualSort', KEY_COL, ORDER_COL, RECALC_COL, DELETE_COL]);
-  return cols.filter(c => !skip.has(c.colId) && !c.colId.startsWith('gristHelper_')).map((c) => {
-    const type = /^Ref(List)?:/.test(c.type) ? 'Text' : c.type;
+// docformat.js) et les règles de mise en forme conditionnelle ; chaque colonne est alors marquée `fmt`. Avec `notes`
+// (l'export envoie les descriptions des colonnes, voir descriptions.js), chaque colonne porte la sienne dans `desc`.
+export function exportableColumns(cols, { extras = false, doc = null, notes = false } = {}) {
+  return dataColumns(cols).filter(c => sentType(c.type)).map((c) => {
+    const type = sentType(c.type);
     const opts = sourceOptions(c, type, cols, { extras, doc });
-    return { id: c.colId, label: c.label || c.colId, type, source: c.type, visible: c.visible || '', ...(opts ? { opts } : {}), ...(extras ? { fmt: true } : {}) };
+    return { id: c.colId, label: c.label || c.colId, type, source: c.type, visible: c.visible || '', ...(opts ? { opts } : {}), ...(extras ? { fmt: true } : {}), ...(notes ? { desc: cleanNote(c.description) } : {}) };
   });
 }
 
@@ -59,6 +80,21 @@ function sourceRules(c, cols) {
   }).filter(Boolean);
 }
 
+// Ce que les tables `tables` ont à envoyer pour chaque élément des colonnes (voir descriptions.js) : colonnes qui ont une
+// mise en forme (`style`) ou une description (`notes`), tables qui ont une description (`tableNote`) ou une page
+// dont on peut envoyer la mise en page (`layout`, voir layout.js). `sections` : lignes de `_grist_Views_section`. Sert à
+// dire à la personne ce que chaque case envoie vraiment.
+export function elementCounts(schema, tables, sections) {
+  const columns = (extras) => tables.flatMap(table => exportableColumns(schema.columns(table) || [], { extras, notes: !extras }));
+  return {
+    style: columns(true).filter(c => c.opts).length,
+    notes: columns(false).filter(c => c.desc).length,
+    tableNote: tables.filter(table => tableNoteOf(schema.table(table), sections)).length,
+    layout: tables.filter(table => modelSection(schema.table(table), sections)).length,
+    formulas: tables.reduce((sum, table) => sum + (schema.columns(table) || []).filter(c => sourceFormula(c) || sourceDefault(c)).length, 0),
+  };
+}
+
 // Règles de la colonne qui lisent une colonne absente de l'export : laissées (la CIBLE ne l'a pas).
 export function pruneRules(columns) {
   const ids = new Set(columns.map(c => c.id));
@@ -88,7 +124,8 @@ export const isFileColumn = c => c.type === 'Attachments';
 // (elles partiraient vides ou fausses). « Modifier » remet l'export d'accord avec les tables.
 export function exportDrift(schema, tables) {
   const lost = tables.filter(tb => !schema.has(tb.table)).map(tb => tb.table);
-  const changed = tables.filter(tb => schema.has(tb.table)).flatMap(({ table, columns }) => {
+  const present = tables.filter(tb => schema.has(tb.table));
+  const changed = present.flatMap(({ table, columns }) => {
     const current = new Map(exportableColumns(schema.columns(table)).map(c => [c.id, c]));
     return columns.filter((c) => {
       const cur = current.get(c.id);
@@ -98,6 +135,29 @@ export function exportDrift(schema, tables) {
   return { lost, changed };
 }
 
+// Le détail de `changed` (voir exportDrift), une ligne par colonne : `gone` (n'existe plus : supprimée ou renommée), `retyped` (autre type :
+// `was`, `now`), `shown` (la colonne qu'elle affiche a changé). Une colonne disparue qui a un seul pendant, du même type, parmi les
+// colonnes envoyables non envoyées, porte `to` (elle a sans doute été renommée) : jamais une certitude, la personne décide.
+export const driftDetails = (schema, tables) => tables.filter(tb => schema.has(tb.table)).flatMap(driftOf(schema));
+
+const typeOf = c => c.source || c.type;
+const driftOf = schema => ({ table, columns }) => {
+  const current = new Map(exportableColumns(schema.columns(table)).map(c => [c.id, c]));
+  const sent = new Set(columns.map(c => c.id));
+  const unsent = [...current.values()].filter(c => !sent.has(c.id));
+  const gone = columns.filter(c => !current.has(c.id));
+  return columns.flatMap((c) => {
+    const cur = current.get(c.id);
+    if (!cur) {
+      const twins = unsent.filter(u => typeOf(u) === typeOf(c));
+      const alike = gone.filter(g => typeOf(g) === typeOf(c));
+      return [{ table, id: c.id, kind: 'gone', ...(twins.length === 1 && alike.length === 1 ? { to: twins[0].id } : {}) }];
+    }
+    if (cur.source !== typeOf(c)) return [{ table, id: c.id, kind: 'retyped', was: typeOf(c), now: cur.source }];
+    return (cur.visible || '') !== (c.visible || '') ? [{ table, id: c.id, kind: 'shown' }] : [];
+  });
+};
+
 // ---------------------------------------------------------------------------------------------
 // Lignes Synchro d'un export
 
@@ -105,10 +165,20 @@ const SYNC_FIELDS = [EXPORT_COL, TABLE_COL, TYPE_COL, SCHEMA_COL, RESEND_COL];
 
 // Valeur de Synchro_Colonnes voulue pour chaque type de ligne d'une table : ses colonnes, ou son
 // filtre (ligne 'filtre', seulement s'il y en a un).
-const schemaText = (columns, withOpts = true) => JSON.stringify(columns.map(({ id, type, label, source, visible, as, opts, link, fmt, doc }) => ({
-  id, type, label, source, visible, ...(as ? { as } : {}), ...(link ? { link } : {}), ...(opts && withOpts ? { opts } : {}),
-  ...(fmt && withOpts ? { fmt: true } : {}), ...(doc && withOpts ? { doc } : {}),
-})));
+// Ce qui s'ajoute à une colonne quand l'export envoie format et descriptions (`withOpts`) ; l'ordre des clés est celui du texte.
+const textExtras = ({ opts, fmt, doc, desc, tdesc, pos, fx, fd }) => ({
+  ...(opts ? { opts } : {}), ...(fmt ? { fmt: true } : {}), ...(doc ? { doc } : {}),
+  ...(typeof desc === 'string' ? { desc } : {}), ...(typeof tdesc === 'string' ? { tdesc } : {}),
+  ...(isPos(pos) ? { pos } : {}),
+  ...(typeof fx === 'string' ? { fx } : {}),
+  ...(typeof fd === 'string' && fd ? { fd } : {}),
+});
+const columnText = (column, withOpts) => {
+  const { id, type, label, source, visible, as, link, list } = column;
+  const head = { id, type, label, source, visible, ...(as ? { as } : {}), ...(link ? { link } : {}), ...(link && list === true ? { list: true } : {}) };
+  return withOpts ? { ...head, ...textExtras(column) } : head;
+};
+const schemaText = (columns, withOpts = true) => JSON.stringify(columns.map(column => columnText(column, withOpts)));
 // Avec un filtre de lignes, la liste des choix d'une colonne ne part pas : elle montrerait des
 // valeurs de lignes que le filtre retient pas. Le format part ; la CIBLE complète sa liste des
 // valeurs qu'elle reçoit (voir receivedChoices).
@@ -173,11 +243,14 @@ export function exportTables(rows, exportId) {
   return [...tables].map(([table, columns]) => ({ table, columns, filter: filterOf(table) }));
 }
 
-// Listes de choix et formats changés dans les tables d'un export depuis son enregistrement : la
+// Listes de choix, formats et descriptions changés dans les tables d'un export depuis son enregistrement : la
 // description des colonnes de ses lignes Synchro est réécrite, sans renvoi de lignes (la CIBLE la
-// lit à la prochaine ligne reçue). Les options se lisent pour le type envoyé (voir options.js).
+// lit à la prochaine ligne reçue). Les options se lisent pour le type envoyé (voir options.js). `sections` :
+// lignes de `_grist_Views_section` (la description d'une table s'y trouve), lues seulement si un export envoie
+// celle de sa table ou la mise en page de ses colonnes ; sans elles, la description de table envoyée reste telle quelle.
+// `fields` : lignes de `_grist_Views_section_field` (la mise en page, voir layout.js), lues seulement si un export l'envoie.
 const SCHEMA_KINDS = [KIND.keys, KIND.lot, KIND.track, KIND.full, KIND.mark, KIND.files];
-export function optionsActions(rows, schema, doc = null) {
+export function optionsActions(rows, schema, doc = null, sections = null, fields = null) {
   const ids = [];
   const values = [];
   for (const exportId of new Set(rows.map(r => r[EXPORT_COL]))) {
@@ -185,11 +258,17 @@ export function optionsActions(rows, schema, doc = null) {
       const live = schema.columns(table);
       const here = new Map(live.map(c => [c.colId, c]));
       const extras = columns.some(c => c.fmt);
-      const fresh = columns.map(({ opts, ...c }) => {
+      const fresh = columns.map(({ opts, desc, ...c }) => {
         const next = here.has(c.id) ? sourceOptions(here.get(c.id), c.type, live, { extras, doc }) : opts;
-        return next ? { ...c, opts: next } : c;
+        const note = typeof desc === 'string' ? { desc: here.has(c.id) ? cleanNote(here.get(c.id).description) : desc } : {};
+        return { ...c, ...(next ? { opts: next } : {}), ...note };
       });
-      const value = schemaText(filteredColumns({ columns: extras ? withDoc(pruneRules(fresh), doc) : fresh, filter }));
+      const sent = noteSent(columns);
+      const styled = extras ? withDoc(pruneRules(fresh), doc) : fresh;
+      const described = sent.table && sections ? withTableNote(styled, tableNoteOf(schema.table(table), sections)) : styled;
+      const formulas = formulasOffered(columns) ? withFormulas(described, live) : described;
+      const laidOut = layoutSent(columns) && sections && fields ? withLayout(formulas, live, schema.table(table), sections, fields) : formulas;
+      const value = schemaText(filteredColumns({ columns: laidOut, filter }));
       for (const r of rows.filter(x => x[EXPORT_COL] === exportId && x[TABLE_COL] === table && SCHEMA_KINDS.includes(x[TYPE_COL]) && x[SCHEMA_COL] !== value)) {
         ids.push(r.id);
         values.push(value);
@@ -292,7 +371,6 @@ export function hookErrorKey(h, now = Date.now()) {
 
 // Lien de réception mort (clé de formulaire inconnue, réception arrêtée) : l'envoi échoue et échouera toujours.
 export const DEAD_KEYS = ['send.error.link', 'send.error.journal'];
-export const deadLink = h => h.fields.enabled && hookStatus(h)[0] === 'error' && DEAD_KEYS.includes(hookErrorKey(h));
 
 // Pourquoi le widget met ce destinataire en pause d'office : 'link' (lien ou journal mort), 'slow' (un envoi attend
 // une réponse qui ne vient pas : Grist n'a pas de délai, vu au test de charge, 20 minutes sans reprise et la file

@@ -40,11 +40,12 @@ for (const name of readdirSync(tests).sort()) {
     .replaceAll("'../../js/i18n.js'", "'./synchro-i18n.mjs'")
     .replaceAll("'./fixtures.mjs'", "'./synchro-fixtures.mjs'")
     .replaceAll("'./engine-fake.mjs'", "'./synchro-fake.mjs'")
+    .replaceAll("'./engine-wire.mjs'", "'./synchro-moteur-wire.mjs'")
     .replaceAll("join(ROOT, 'js/engine')", "join(ROOT, 'js/synchro')")
     .replaceAll("'./golden/", "'./synchro-golden/")
     .replaceAll("'../..')", "'..')")
     // Le test du port de Sync+ lit son fichier `js/sync-port.js`, qui n'est pas dans le kit : le port de l'hôte (GFS) a ses propres essais.
-    .replace(/test\('le port de Sync\+ a la forme[\s\S]*?\n\}\);\n\n/, '');
+    .replace(/test\('le port de (?:Sync\+|syncPlus) a la forme[\s\S]*?\n\}\);\n\n/, '');
   writeFileSync(join(KIT, 'test', target), rewritten);
   copied += 1;
 }

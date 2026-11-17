@@ -5,7 +5,7 @@
 // notés dans la description de sa colonne Synchro_Export : des métadonnées, que le webhook
 // n'envoie pas. Synchro n'a pas de page : elle reste dans « Données source ».
 import {
-  EXPORT_COL, KIND, LIST_COL, LOT_COL, SIG_KEY, RECALC_COL, RESEND_COL, SCHEMA_COL, SYNC_TABLE, TABLE_COL, TRACK_COL, TYPE_COL, columnNote, noteAction, nowS,
+  EXPORT_COL, KIND, LIST_COL, LOT_COL, SIG_KEY, RECALC_COL, RESEND_COL, SCHEMA_COL, SYNC_TABLE, TABLE_COL, TRACK_COL, TYPE_COL, columnNote, noteAction, nowS, pool, randomHex,
 } from '../logic/common.js';
 import { cleanLabel } from '../logic/codes.js';
 import { RECALC_SPEC, majleAction, prepareSourceActions, syncColumns, syncFormulas } from '../logic/formulas.js';
@@ -14,9 +14,10 @@ import { filterColumns } from '../logic/filters.js';
 import { docFormatOf } from '../logic/docformat.js';
 import { keptKeys, readKeys, signText } from '../logic/trust.js';
 import { foreignSync, ownsSync, strayColumns } from '../logic/strays.js';
-import { addEvent, docNameOf, observeRows, setDocName } from '../logic/notes.js';
-import { apply, docIdentity, fetchRows, listWebhooks, readSchema, webhookConditions, withLock } from '../port.js';
+import { addEvent, docNameOf, dropDest, identifyHooks, isMemoToken, observeRows, putDest, setDocName, staleDest } from '../logic/notes.js';
+import { apply, docIdentity, fetchRows, listWebhooks, readSchema, renameWebhook, webhookConditions, withLock } from '../port.js';
 import { dropPages, isOnPage, removeTechnicalTables } from '../pages.js';
+import { moveNotes } from '../note-move.js';
 
 const SORT_COL = 'manualSort'; // colonne d'ordre que Grist donne à toute table (voir ensureSyncTable)
 
@@ -26,11 +27,56 @@ export const isCharge = row => row[TYPE_COL] === KIND.load;
 export const syncRows = async (schema = null) => (ownsSync(schema || await readSchema()) ? (await fetchRows(SYNC_TABLE)).filter(r => !isCharge(r)) : []);
 
 // Webhooks du document et leurs conditions (propriétaires seulement) ; `of(id)` : les
-// destinataires d'un export (voir hooksOf).
+// destinataires d'un export (voir hooksOf). Le mémo de chaque webhook est la fiche du destinataire (voir identifyHooks).
 export async function readHooks() {
-  const [hooks, conditions] = await Promise.all([listWebhooks(), webhookConditions()]);
-  return { hooks, conditions, of: id => hooksOf(hooks, conditions, id) };
+  const [hooks, conditions, schema] = await Promise.all([listWebhooks(), webhookConditions(), readSchema()]);
+  const known = identifyHooks(hooks, readSourceNote(schema));
+  return { hooks: known, conditions, of: id => hooksOf(known, conditions, id) };
 }
+
+// Les webhooks du document avec la fiche de leur destinataire en guise de mémo, pour un écran qui a déjà lu `note`.
+export const identified = (hooks, note) => identifyHooks(hooks, note);
+
+// Range la fiche d'un destinataire (« e-mail · document · équipe/nom », voir hookMemo) dans la note et rend le jeton à mettre
+// dans le mémo de son webhook : Grist montre les mémos à toute personne qui lit le document, lien public compris. À appeler
+// AVANT de créer le webhook.
+export async function rememberDest(memo) {
+  const token = `r-${randomHex(6)}`;
+  await updateSourceNote(note => putDest(note, token, memo, nowS()));
+  return token;
+}
+
+// Délai avant qu'un jeton sans webhook soit retiré de la note (le temps de créer le webhook qui le porte).
+const DEST_GRACE_S = 600;
+
+// Met les fiches des destinataires à l'abri (propriétaires, une fois par affichage) : les webhooks dont le mémo est encore la
+// fiche elle-même (créés par une version d'avant la 4.0 du moteur) prennent un jeton, la fiche rejoignant la note ; les
+// fiches de destinataires partis sont retirées de la note. Rend vrai si un mémo a changé. Une erreur d'un webhook (supprimé
+// entre-temps) ne coupe pas les autres.
+export const protectMemos = () => withLock('gristsync-memos', async () => {
+  const schema = await readSchema();
+  if (!ownsSync(schema)) return false;
+  let hooks;
+  try { hooks = await listWebhooks(); } catch (e) { if (e.message === 'ownerOnly') return false; throw e; }
+  const mine = hooks.filter(h => h.fields.tableId === SYNC_TABLE);
+  const legacy = mine.filter(h => h.fields.memo && !isMemoToken(h.fields.memo));
+  const tokens = new Map(legacy.map(h => [h.id, `r-${randomHex(6)}`]));
+  const live = new Set(hooks.map(h => h.fields.memo));
+  await updateSourceNote((note) => {
+    const kept = tokens.size ? legacy.reduce((acc, h) => putDest(acc, tokens.get(h.id), h.fields.memo, nowS()), note) : note;
+    return dropDest(kept, staleDest(kept, live, nowS(), DEST_GRACE_S));
+  });
+  let changed = false;
+  await pool(legacy, 6, async (h) => {
+    try {
+      await renameWebhook(h.id, h.fields.name, tokens.get(h.id));
+      changed = true;
+    } catch (e) {
+      console.warn(e);
+    }
+  });
+  return changed;
+});
 export const exportHooks = async exportId => (await readHooks()).of(exportId);
 
 // Ligne 'charge' de Synchro (voir parseCharge), créée au premier renvoi.
@@ -132,7 +178,8 @@ export async function ensureSyncTable(schema = null, rows = null) {
   if (watch.type !== 'Any') await apply([['ModifyColumn', SYNC_TABLE, TRACK_COL, { type: 'Any' }]]);
   if (depsChanged) await apply([['UpdateRecord', '_grist_Tables_column', watch.id, { recalcWhen: 0, recalcDeps: deps }]]);
   const formulasChanged = await refreshFormulas(schema, rows || await syncRows(schema));
-  return missing.length > 0 || sorted || depsChanged || formulasChanged;
+  const moved = await moveNotes(schema);
+  return missing.length > 0 || sorted || depsChanged || formulasChanged || moved;
 }
 
 // Retire de Synchro des colonnes qui ne sont pas au widget (voir strayColumns) ; `ids` : leurs
@@ -157,9 +204,15 @@ export async function renameForeignSync(name) {
 // Listes de choix et formats changés dans les tables des exports (voir optionsActions). Rend vrai
 // si quelque chose a changé.
 export async function refreshOptions(schema, rows) {
-  // Un export qui envoie sa mise en forme (colonnes `fmt`) dit aussi la langue et la monnaie du document.
-  const doc = rows.some(r => String(r[SCHEMA_COL] || '').includes('"fmt":true')) ? docFormatOf(await fetchRows('_grist_DocInfo')) : null;
-  const actions = optionsActions(rows, schema, doc);
+  const sends = key => rows.some(r => String(r[SCHEMA_COL] || '').includes(key));
+  // Un export qui envoie sa mise en forme (colonnes `fmt`) dit aussi la langue et la monnaie du document ; un qui
+  // envoie la description de sa table (`tdesc`) la tient de la section de données brutes de la table.
+  const doc = sends('"fmt":true') ? docFormatOf(await fetchRows('_grist_DocInfo')) : null;
+  // un qui envoie la mise en page de ses colonnes (`pos`, voir layout.js) la tient de la section de la page de la table.
+  const laidOut = sends('"pos":');
+  const sections = sends('"tdesc"') || laidOut ? await fetchRows('_grist_Views_section') : null;
+  const fields = laidOut ? await fetchRows('_grist_Views_section_field') : null;
+  const actions = optionsActions(rows, schema, doc, sections, fields);
   await apply(actions);
   return actions.length > 0;
 }
@@ -190,17 +243,25 @@ export async function refreshMajLe(schema = null, rows = null) {
   return actions.length > 0;
 }
 
+// Crée la table Synchro quand elle manque (sans page ; vide si `tables`, les noms des tables à envoyer, l'est).
+// Rend vrai si elle vient d'être créée. Une table du même nom qui n'est pas la nôtre n'est pas touchée.
+export async function createSyncTable(tables = [], schema = null) {
+  if ((schema || await readSchema()).has(SYNC_TABLE)) return false;
+  // manualSort part avec la création, dans la même action : sinon deux onglets (l'écran qui s'affiche et l'assistant qui crée l'export)
+  // la retireraient chacun de leur côté, et le second se verrait répondre « No such column: Synchro.manualSort » (vu à l'e2e).
+  await apply([['AddTable', SYNC_TABLE, syncColumns(tables)], ['RemoveColumn', SYNC_TABLE, SORT_COL]]);
+  await dropPages([SYNC_TABLE]);
+  return true;
+}
+
 // Enregistre les tables et colonnes d'un export (`tables` : [{ table, columns }]). Crée la table
-// Synchro au premier export. Rend les tables dont les lignes sont à envoyer (nouvelles ou aux
+// Synchro au premier export (voir protectSync : ses règles d'accès sont posées avant, par l'écran). Rend les tables dont les lignes sont à envoyer (nouvelles ou aux
 // colonnes changées). `swap` : export en Échange (voir exportRowsActions).
 export async function saveExport(exportId, tables, { isPublic = false, swap = false } = {}) {
   const schema = await readSchema();
   // Une table nommée Synchro qui n'est pas la nôtre n'est pas reprise (voir foreignSync).
   if (foreignSync(schema)) throw new Error('syncTableForeign');
-  if (!schema.has(SYNC_TABLE)) {
-    await apply([['AddTable', SYNC_TABLE, syncColumns(tables.map(tb => tb.table))]]);
-    await dropPages([SYNC_TABLE]);
-  }
+  await createSyncTable(tables.map(tb => tb.table), schema);
   const before = await fetchRows(SYNC_TABLE);
   const { actions, changed } = exportRowsActions(before, exportId, tables, { isPublic, swap });
   // Les formules d'abord quand une table s'ajoute (elles doivent pouvoir la lire), après quand une

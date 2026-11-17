@@ -1,15 +1,15 @@
 // Codes échangés entre SOURCE et CIBLE (préfixe + JSON en base64url, sur une ligne) et adresses
 // Grist qu'ils portent. Tout ce qui vient d'un code collé est contrôlé ici : identifiants, colonnes,
 // adresses réécrites à partir de leurs seuls éléments reconnus.
-import { HEX16, PUBLIC_KEY, SIG_KEY, is, isSafeId, parseJson } from './common.js';
+import { HEX16, PUBLIC_KEY, SENT_TYPE, SIG_KEY, is, isSafeId, parseJson } from './common.js';
 import { columnOptions } from './options.js';
 import { docFormat } from './docformat.js';
+import { TABLE_NOTE_MAX, cleanNote } from './descriptions.js';
+import { cleanFormula } from './column-formulas.js';
+import { isPos } from './layout.js';
 
 const CODE_PREFIX = 'GRISTSYNC2.';
 const SECRET = /^[0-9a-f]{32}$/;
-// Types de colonnes qu'un export envoie (une Référence part en texte, une pièce jointe en liste de
-// fichiers, voir files.js).
-const SENT_TYPE = /^(Any|Attachments|Bool|Choice|ChoiceList|Date|DateTime(:[A-Za-z0-9_/+-]+)?|Int|Numeric|Text)$/;
 const MAX_COLUMNS = 400; // colonnes par table, au plus
 const TEAM = '(?:/o/[A-Za-z0-9_-]+)?'; // équipe dans le chemin : /o/<équipe>
 
@@ -33,7 +33,14 @@ function fromBase64Url(text) {
 // change la forme des codes augmente CODE_FORMAT : une version plus ancienne refuse alors ses codes
 // en nommant les deux versions, au lieu d'une erreur vague ou d'un envoi qui échoue plus tard. Un
 // code sans forme vient d'avant la 0.12 (même forme depuis la 0.10, contrôlée plus loin).
-const CODE_FORMAT = 1;
+// 1 : forme des codes jusqu'à la 0.28.1 (moteur 4.12.0 compris).
+// 2 : relevée avec le moteur 5.0.0 (syncPlus 0.28.2), pour que la CIBLE d'avant les références entre tables par colonne
+//     (moteur 4.11.0 : Liste de références, `list` dans la description des colonnes) ne reçoive pas d'invitation d'une
+//     SOURCE plus récente : elle ferait d'une colonne `list` une Référence simple, sans rien dire. Le contenu des codes
+//     n'a pas changé : le relèvement fait de l'invitation la porte d'entrée (la CIBLE trop ancienne dit `codeNewer`
+//     avec les deux versions). Il joue dans les deux sens : une SOURCE d'avant refuse aussi la réponse d'une CIBLE à
+//     la forme 2, avec le même message ; les codes de forme 1 déjà faits restent lus.
+export const CODE_FORMAT = 2;
 const VERSION = /^\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 const encodeCode = (payload, version) => CODE_PREFIX + toBase64Url(JSON.stringify({ ...payload, f: CODE_FORMAT, ...(version ? { v: version } : {}) }));
 
@@ -64,15 +71,36 @@ export function validColumns(cols) {
 
 // `withOpts` : avec leur liste de choix et leur format (voir options.js), contrôlés. Les codes ne
 // les portent pas (ils resteraient courts) : la CIBLE les lit dans la description reçue au journal.
-export const exportSchema = (columns, withOpts = false) => columns.map(({ id, type, label, as, opts, link, visible, doc }) => {
-  const kept = withOpts && opts ? columnOptions(type, opts, { extras: true }) : null;
-  const sourceDoc = withOpts ? docFormat(doc) : null; // langue et monnaie du document de la SOURCE (voir docformat.js)
-  // Référence conservée (voir links.js) : table visée et colonne qu'elle affichait, dans la SOURCE.
-  const aim = withOpts && isSafeId(link) ? { link, ...(isSafeId(visible) ? { visible } : {}) } : {};
-  return { id, type, ...(typeof label === 'string' ? { label: label.slice(0, 200) } : {}), ...(as ? { as } : {}), ...aim, ...(kept ? { opts: kept } : {}), ...(sourceDoc ? { doc: sourceDoc } : {}) };
-});
+export const exportSchema = (columns, withOpts = false) => columns.map(column => schemaColumn(column, withOpts));
 
-const text200 = (from, keys) => Object.fromEntries(keys.map(k => [k, String(from[k] ?? '').slice(0, 200)]));
+// Référence conservée (voir links.js) : table visée et colonne qu'elle affichait, dans la SOURCE.
+// `list` : la colonne désigne plusieurs lignes (Liste de références).
+const schemaAim = ({ link, visible, list }) => (isSafeId(link) ? { link, ...(isSafeId(visible) ? { visible } : {}), ...(list === true ? { list: true } : {}) } : {});
+
+// Descriptions de la colonne et de la table (voir descriptions.js) : du texte, nettoyé et borné ; la clé dit que l'export les envoie.
+// Mise en forme (`fmt`), rang dans la page (`pos`), formules (voir column-formulas.js). L'ordre des clés est celui du texte signé.
+function schemaNotes({ desc, tdesc, fmt, pos, fx, fd }) {
+  return {
+    ...(fmt === true ? { fmt } : {}),
+    ...(typeof desc === 'string' ? { desc: cleanNote(desc) } : {}),
+    ...(typeof tdesc === 'string' ? { tdesc: cleanNote(tdesc, TABLE_NOTE_MAX) } : {}),
+    ...(isPos(pos) ? { pos } : {}),
+    ...(typeof fx === 'string' ? { fx: cleanFormula(fx) } : {}),
+    ...(typeof fd === 'string' && cleanFormula(fd) ? { fd: cleanFormula(fd) } : {}),
+  };
+}
+
+function schemaColumn(column, withOpts) {
+  const { id, type, label, as, opts } = column;
+  const head = { id, type, ...(typeof label === 'string' ? { label: cleanLabel(label) } : {}), ...(as ? { as } : {}) };
+  if (!withOpts) return head;
+  const kept = opts ? columnOptions(type, opts, { extras: true }) : null;
+  const docInfo = docFormat(column.doc); // langue et monnaie du document de la SOURCE (voir docformat.js)
+  return { ...head, ...schemaAim(column), ...(kept ? { opts: kept } : {}), ...(docInfo ? { doc: docInfo } : {}), ...schemaNotes(column) };
+}
+
+// Un texte dit par l'autre document (courriel, identifiant, équipe, nom) : nettoyé comme `cleanLabel` (sans caractère de contrôle ni de sens d'écriture).
+const text200 = (from, keys) => Object.fromEntries(keys.map(k => [k, cleanLabel(from[k])]));
 
 // Un nom que dit un code (le document de la SOURCE) : texte seul, jamais une décision. Sans caractères de
 // contrôle ni de sens d'écriture (un U+202E retournerait le texte qui suit), espaces ramenées à une, 200
@@ -141,7 +169,7 @@ export function parseInvitation(text, version = '') {
   if (mode.mode !== 'public' && !inv.pub) throw new Error(is(SIG_KEY, inv.cle) ? 'codeOld' : 'codeInvalid');
   const from = inv.from && typeof inv.from === 'object' ? inv.from : {};
   return {
-    id: inv.id, export: inv.export, name: inv.name.slice(0, 200), secret: inv.secret || '', origin: String(inv.origin || ''), ...mode,
+    id: inv.id, export: inv.export, name: cleanLabel(inv.name), secret: inv.secret || '', origin: String(inv.origin || ''), ...mode,
     expire: inv.expire || 0, renforce: inv.renforce === true, pub: inv.pub || '',
     from: { ...text200(from, ['email', 'docId']), ...sourceDoc(from) }, version: codeVersion(inv),
     tables: inv.tables.map(tb => ({ table: tb.table, columns: exportSchema(tb.columns) })),
@@ -264,6 +292,63 @@ export function docUrl(origin, team, docId, name = '') {
   const site = /^docs-\d+$/.test(team || '') ? 'docs' : team;
   const where = `${origin}${site ? `/o/${site}` : ''}`;
   return docId.length >= 12 ? `${where}/${docId}/${docSlug(name) || 'document'}` : `${where}/doc/${docId}`;
+}
+
+// Ce que dit l'adresse d'une page de document, collée de la barre d'adresse du navigateur : `<instance>[/o/<équipe>]/<identifiant>[/<nom>[/p/<page>]]`
+// ou `<instance>[/o/<équipe>]/doc/<identifiant>` (voir docUrl). Rend `{ origin, team, docId, name }`, ou null si ce n'en est pas une (ni
+// http ni https, pas d'identifiant de la forme voulue). Le nom est celui que Grist écrit dans l'adresse : sans accent ni ponctuation, les mots
+// séparés par des tirets (« Donnees-Ministere-2026-v2 » pour « Données Ministère 2026 (v2) »), absent pour un nom sans lettre latine
+// (forme `/doc/`) ; « document » est le nom neutre de nos propres liens (docUrl), donc aucun nom.
+export function parsePageAddress(text) {
+  let url;
+  try {
+    url = new URL(String(text ?? '').trim());
+  } catch (e) {
+    return null;
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) return null;
+  const found = addressParts(url.pathname.split('/').filter(Boolean).map(decoded));
+  if (!TEAM_ID.test(found.docId) || (found.team && !TEAM_ID.test(found.team))) return null;
+  const name = found.slug === 'document' ? '' : cleanLabel(found.slug.replace(/-+/g, ' '));
+  return { origin: url.origin, team: found.team, docId: found.docId, name };
+}
+
+function decoded(part) {
+  try {
+    return decodeURIComponent(part);
+  } catch (e) {
+    return '';
+  }
+}
+
+// Équipe, identifiant et nom (tel que Grist l'écrit) d'un chemin d'adresse de page ; le nom manque après `/doc/` et quand la suite
+// est `/p/<page>`.
+function addressParts(parts) {
+  const team = parts[0] === 'o' ? parts[1] || '' : '';
+  const rest = parts.slice(parts[0] === 'o' ? 2 : 0);
+  const plain = rest[0] === 'doc';
+  const after = rest.slice(plain ? 2 : 1);
+  const page = after[0] === 'p' && /^\d+$/.test(after[1] || '');
+  return { team, docId: (plain ? rest[1] : rest[0]) || '', slug: plain || page ? '' : after[0] || '' };
+}
+
+// Deux identifiants du même document : l'adresse d'une page porte l'identifiant court (au moins 12 caractères, règle de Grist) ou
+// complet, l'API celui de son adresse REST ; un identifiant plus court que 12 caractères (choisi à la main) doit être identique.
+const sameId = (a, b) => a === b || (a.length >= 12 && b.length >= 12 && (a.startsWith(b) || b.startsWith(a)));
+
+// Le champ « Nom de ce document » de la SOURCE (un widget ne peut pas lire le nom de son document, voir rememberDocName) : un nom tapé tel
+// quel, ou l'adresse de la page collée, dont on lit le nom (`parsePageAddress`). `here` : `{ origin, docId }` de CE document. Rend
+// `{ kind, name }` : `typed` (le nom tapé, nettoyé), `address` (nom lu dans l'adresse), ou, sans nom (`name` vide, jamais l'adresse
+// elle-même), `noName` (l'adresse ne contient pas de nom), `otherDoc` (l'identifiant n'est pas celui de ce document), `otherSite` (autre
+// instance Grist), `invalid` (pas une adresse de page de document). Une adresse n'est jamais gardée ni envoyée : seul le nom en sort.
+export function docNameFrom(input, here) {
+  const text = String(input ?? '').trim();
+  if (!/^https?:\/\//i.test(text)) return { kind: 'typed', name: cleanLabel(text) };
+  const page = parsePageAddress(text);
+  if (!page) return { kind: 'invalid', name: '' };
+  if (page.origin !== (here || {}).origin) return { kind: 'otherSite', name: '' };
+  if (!sameId(String(here.docId || ''), page.docId)) return { kind: 'otherDoc', name: '' };
+  return page.name ? { kind: 'address', name: page.name } : { kind: 'noName', name: '' };
 }
 
 // `baseUrl` renvoyé par getAccessToken : https://<instance>[/o/<équipe>]/api/docs/<docId>

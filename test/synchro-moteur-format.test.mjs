@@ -5,27 +5,22 @@
 // que sur un geste. « Reprendre la mise en forme » remet tout d'accord.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startEngine } from '../js/synchro/index.js';
 import { EXPORT_COL, KEY_COL, KIND, LOT_COL, SCHEMA_COL, TABLE_COL, TYPE_COL } from '../js/synchro/logic/common.js';
 import { signText } from '../js/synchro/logic/trust.js';
 import { readSchema } from '../js/synchro/port.js';
-import { syncRows, refreshOptions } from '../js/synchro/source/synchro.js';
+import { syncRows } from '../js/synchro/source/synchro.js';
 import { saveChosenExport } from '../js/synchro/source/export.js';
-import { approveReply, checkReply, invitationCode, startInvitation } from '../js/synchro/source/invite.js';
-import { checkDestinations, createReception, readInvitation, receptionReply } from '../js/synchro/target/receive.js';
 import { consolidateAll, restyle } from '../js/synchro/target/loop.js';
 import { alignDocFormat, readDocFormat } from '../js/synchro/target/style.js';
 import { currencyOf, formatGap } from '../js/synchro/logic/docformat.js';
 import { receivedJournals } from '../js/synchro/logic/received.js';
-import { fakeDoc, fakeWorld } from './synchro-fake.mjs';
+import { fakePair } from './synchro-fake.mjs';
+import { columnOf, engineAs, lotsMarked, refreshed, wireReception } from './synchro-moteur-wire.mjs';
 
-const world = fakeWorld();
-const source = fakeDoc({ docId: 'sourcedocfmt1x', name: 'Budget source', email: 'source@fake.local', locale: 'fr-FR' });
-const target = fakeDoc({ docId: 'targetdocfmt2x', name: 'Budget copie', email: 'cible@fake.local' });
-const as = doc => startEngine({ port: world.port(doc), version: '9.9.9' });
+const { world, source, target } = fakePair('fm', { contacts: false, source: { locale: 'fr-FR' } });
+const as = engineAs(world);
 
 // Une colonne du document `doc` d'après son nom.
-const columnOf = (doc, table, colId) => doc.fetchRows('_grist_Tables_column').find(c => c.colId === colId && doc.tables.get(table).columns.some(x => x.id === c.id));
 const options = (doc, table, colId) => JSON.parse(columnOf(doc, table, colId).widgetOptions || '{}');
 // Règles d'une colonne : [{ formula, style }] dans l'ordre de ses règles.
 const rulesOf = (doc, table, colId) => {
@@ -76,17 +71,7 @@ test('mise en forme : SOURCE fr-FR vers CIBLE en-US', async (t) => {
   });
 
   await t.test('SOURCE puis CIBLE : invitation, réception, webhook', async () => {
-    const { entry, secret } = await startInvitation(story.exp);
-    const { code } = await invitationCode(story.exp, entry, secret);
-    as(target);
-    const invitation = await readInvitation(code);
-    const plans = invitation.tables.map(tb => ({ tb, dest: 'Budget_recu' }));
-    await checkDestinations(invitation, plans);
-    story.made = await createReception(invitation, plans, { reserve: false, options: {} });
-    const { code: reply } = await receptionReply(story.made, world.formLink(target, story.made.journal));
-    as(source);
-    story.accepted = await checkReply(story.exp, entry, reply);
-    await approveReply(story.exp, entry, story.accepted);
+    Object.assign(story, await wireReception({ world, source, target, exp: story.exp, dest: 'Budget_recu' }));
   });
 
   const deliver = async (lot) => {
@@ -153,15 +138,15 @@ test('mise en forme : SOURCE fr-FR vers CIBLE en-US', async (t) => {
     source.apply([['UpdateRecord', '_grist_DocInfo', 1, { documentSettings: JSON.stringify({ locale: 'de-DE', engine: 'python3' }) }]]);
     const rule = columnOf(source, 'Budget', 'Montant').rules[1];
     source.apply([['ModifyColumn', 'Budget', source.fetchRows('_grist_Tables_column').find(c => c.id === rule).colId, { formula: '$Montant < 100' }]]);
-    const marked = source.rows('Synchro').filter(r => r[TYPE_COL] === KIND.lot).length;
-    assert.equal(await refreshOptions(await readSchema(), await syncRows()), true);
+    const marked = lotsMarked(source);
+    assert.equal(await refreshed(), true);
     const lot = (await syncRows()).find(r => r[TYPE_COL] === KIND.lot && r[TABLE_COL] === 'Budget');
     const columns = JSON.parse(lot[SCHEMA_COL]);
     assert.deepEqual(columns[0].doc, { locale: 'de-DE' });
     assert.equal(columns[1].opts.currency, 'EUR', 'de-DE : l\'euro aussi');
     assert.equal(columns[1].opts.rules[0].when, '$Montant < 100');
-    assert.equal(source.rows('Synchro').filter(r => r[TYPE_COL] === KIND.lot).length, marked);
-    assert.equal(await refreshOptions(await readSchema(), await syncRows()), false, 'rien de plus au passage suivant');
+    assert.equal(lotsMarked(source), marked);
+    assert.equal(await refreshed(), false, 'rien de plus au passage suivant');
   });
 
   await t.test('SOURCE : un export qui n\'envoie pas sa mise en forme garde la description d\'avant', async () => {

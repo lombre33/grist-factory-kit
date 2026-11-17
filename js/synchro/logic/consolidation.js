@@ -6,6 +6,7 @@ import {
 } from './common.js';
 import { REFUSED, STATES, compareOrder, completeLists, destColumns, lastMark, latestByKey, pendingLists, sentColumns } from './journal.js';
 import { exchangeColumns } from './exports.js';
+import { noteSent, sentElements } from './descriptions.js';
 
 // Échange, chez le document qui l'administre : ce qu'il fait de chaque type de changement reçu d'un
 // participant (`regles` de l'export : accepter, refuser, ou garder à valider sur la carte), et d'un
@@ -87,6 +88,18 @@ export function newColumnsMap({ columns = [], map = {} }, sent, destColIds) {
   return next;
 }
 
+// Colonnes de données connues d'une table reçue : celles de l'invitation et celles déjà rangées dans `map`.
+const knownColumns = ({ columns = [], map = {} }) => new Set([...columns.map(c => c.id), ...Object.keys(map)]);
+
+// Colonnes envoyées arrivées après l'invitation, avec le nom que la destination leur donnerait (`to`, voir
+// newColumnsMap). Une entrée qui ne connaissait encore aucune colonne (ancien montage) n'en a pas : tout y paraîtrait nouveau.
+export function freshColumns(entry, sent, destColIds) {
+  const known = knownColumns(entry);
+  const fresh = known.size ? destColumns(sent).filter(c => !known.has(c.id)) : [];
+  const names = fresh.length ? newColumnsMap(entry, fresh, destColIds) : {};
+  return fresh.map(c => ({ id: c.id, to: names[c.id], label: c.label || c.id, type: c.type }));
+}
+
 // Colonnes que la SOURCE a ajoutées à l'export, gardées pour l'historique (nom d'ici, heure ; les
 // ADDED_KEPT dernières) : celles que newColumnsMap vient de ranger (`map`). Une entrée qui ne
 // connaissait encore aucune colonne (ancien montage) n'en note pas : tout y paraîtrait nouveau.
@@ -102,7 +115,7 @@ export function addedColumns({ columns = [], map = {}, addedCols = [] }, next, a
 // Grist commence par la marque 'L'.
 // Un nombre reçu et le même nombre écrit en texte sont égaux : une Référence qui n'affiche que le
 // numéro de ligne (ou une colonne numérique) part en nombre, et la colonne Texte d'ici le garde en texte.
-function sameValue(sent, have) {
+export function sameValue(sent, have) {
   const norm = x => (isBlank(x) ? null : Array.isArray(x) && x[0] === 'L' ? x.slice(1) : x);
   const [a, b] = [norm(sent), norm(have)];
   if (typeof a === 'number' && typeof b === 'string') return String(a) === b;
@@ -426,7 +439,7 @@ export function planConsolidation({
     actions: [
       ...consolidationActions({ destTable, journalTable, copyCols, exchange, deleteCol: ctx.deleteCol, archive: archive && !exchange, uncheck: archived.size > 0 || (archive && !exchange) }, { ...plan, removeIds, listGone, leftGone }),
     ],
-    stats: plan.stats, gone,
+    stats: plan.stats, gone, attached: plan.attached,
     pending: plan.pending.map(item => ({ ...item, n: numbers.get(item.key) || null })),
     waiting: plan.waiting.map(item => ({ ...item, n: numbers.get(item.key) || null })),
     fix: { actions: fixActions(destTable, plan.fixes, copyCols, ctx.deleteCol, now), keys: plan.fixes.map(f => f.key) },
@@ -487,15 +500,23 @@ function planRemovals({ plan, dest, destRows, archived }) {
 // que celles-là (voir exchangeColumns). Une colonne ajoutée à l'export après coup ne remplace
 // jamais une colonne de la destination qui porte déjà son nom (elle prend un nom libre) ; elle
 // est notée pour l'historique (`addedCols`, à l'heure `now`, en secondes).
-export function receivedColumns(entry, tableRows, schema, allowed, now) {
+// `hold` (la réception demande l'accord de la personne, voir structure.js) : les colonnes arrivées après coup ne sont
+// ni rangées ni recopiées ; elles sont rendues dans `held`, `all` garde toutes les colonnes envoyées.
+export function receivedColumns(entry, tableRows, schema, allowed, now, { hold = false } = {}) {
   let sent = sentColumns(tableRows, entry.columns || []);
   const doc = (sent.find(c => c.doc) || {}).doc; // langue et monnaie du document de la SOURCE, si elle les envoie
+  const sends = sentElements(sent); // ce que l'export envoie en plus des données (voir descriptions.js)
+  const { tableNote } = noteSent(sent);
   let next = entry;
   if (allowed) {
     const kept = exchangeColumns(sent, allowed, entry.map);
     sent = kept.sent;
     next = { ...entry, map: kept.map };
   }
-  const map = newColumnsMap(next, destColumns(sent), schema.columns(next.dest).map(c => c.colId));
-  return { sent, doc, entry: map ? { ...next, map, addedCols: addedColumns(next, map, now) } : next };
+  const all = sent;
+  const destIds = schema.columns(next.dest).map(c => c.colId);
+  const held = hold && !allowed ? freshColumns(next, sent, destIds) : [];
+  if (held.length) sent = sent.filter(c => !held.some(h => h.id === c.id));
+  const map = newColumnsMap(next, destColumns(sent), destIds);
+  return { sent, all, held, doc, sends, tableNote, entry: map ? { ...next, map, addedCols: addedColumns(next, map, now) } : next };
 }

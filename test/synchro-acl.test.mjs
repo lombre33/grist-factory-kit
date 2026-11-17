@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  JOURNAL_MEMO, LOCK_MEMO, OWNER_MEMO, PUBLIC_MEMO, aclActions, currentRules, editorsEditStructure, hiddenTables, isPublicRule, isWidgetRule, journalAclRules, lockAclRules, lockMirrors, lockedTables, ownerAclRules,
+  JOURNAL_MEMO, KEY_MEMO, LOCK_MEMO, OWNER_MEMO, PUBLIC_MEMO, aclActions, currentRules, editorsEditStructure, hiddenTables, isPublicRule, isWidgetRule, journalAclRules, keyAclRules, lockAclRules, lockMirrors, lockedTables, ownerAclRules,
   publicAclRules, ruleText,
 } from '../js/synchro/logic/acl.js';
 
@@ -23,15 +23,23 @@ test('lien public : seuls les instantanés des exports publics, sans la note de 
   assert.ok(!isWidgetRule({ memo: '' }) && !isWidgetRule({ memo: 'Synchro' }));
 });
 
-test('Synchro réservée aux propriétaires : un éditeur ne lit que les lignes d\'un Échange, sans lot ni listes', () => {
-  const rules = ownerAclRules();
+test('Synchro réservée aux propriétaires : sans Échange, un éditeur n\'y lit rien (la note de la SOURCE non plus)', () => {
+  for (const none of [undefined, [], ['pas-un-id']]) {
+    const rules = ownerAclRules(none);
+    assert.deepEqual(rules.map(r => [r.tableId, r.colIds, r.aclFormula, r.permissionsText, r.memo]),
+      [['Synchro', '*', 'user.Access != OWNER', '-CRUD', OWNER_MEMO]], 'un seul refus, sans condition de ligne : les colonnes sont cachées aux métadonnées');
+    assert.ok(rules.every(r => isWidgetRule(r) && !isPublicRule(r)));
+  }
+});
+
+test('Synchro réservée aux propriétaires : avec un Échange, un éditeur ne lit que ses lignes, sans lot ni listes', () => {
+  const rules = ownerAclRules([E]);
   assert.ok(rules.every(r => r.tableId === 'Synchro' && r.memo === OWNER_MEMO && !isPublicRule(r)));
   assert.deepEqual(rules.map(r => [r.colIds, r.permissionsText]), [
     ['Synchro_Export', '-R'], ['Synchro_Lot,Synchro_Ids,Sync_Etat,Sync_Par', '-RU'], ['Synchro_Renvoi', '+RU'], ['*', '+R'], ['*', '-CRUD'],
   ]);
   assert.equal(rules[0].aclFormula, 'user.Access == VIEWER', 'note de la SOURCE cachée aux lecteurs');
   assert.equal(rules[1].aclFormula, 'user.Access == EDITOR', 'les colonnes ne visent pas les lecteurs : le lien public lit encore l\'instantané');
-  assert.equal(rules[2].aclFormula, 'user.Access == EDITOR and rec.Synchro_Export in [] and rec.Synchro_Type in ["echange", "lot"]', 'sans Échange : aucune ligne');
   assert.equal(ownerAclRules([E, 'pas-un-id', '00000000000000ff'])[2].aclFormula,
     `user.Access == EDITOR and rec.Synchro_Export in ["00000000000000ff", "${E}"] and rec.Synchro_Type in ["echange", "lot"]`, 'la recopie d\'un Échange écrit Synchro_Renvoi de ses lots seulement');
   assert.equal(rules[3].aclFormula, rules[2].aclFormula);
@@ -52,6 +60,21 @@ test('tables reçues en lecture seule : seuls les propriétaires écrivent, une 
   ]);
   assert.ok(rules.every(isWidgetRule));
   assert.deepEqual(lockAclRules([]), []);
+});
+
+test('clé de signature : id_sync des tables reçues cachée aux lecteurs, une règle par table', () => {
+  const rules = keyAclRules(['Villes', 'Annuaire', 'Villes']);
+  assert.deepEqual(rules.map(r => [r.tableId, r.colIds, r.aclFormula, r.permissionsText, r.memo]), [
+    ['Annuaire', 'id_sync', 'user.Access == VIEWER', '-R', KEY_MEMO], ['Villes', 'id_sync', 'user.Access == VIEWER', '-R', KEY_MEMO],
+  ]);
+  assert.ok(rules.every(isWidgetRule) && !rules.some(isPublicRule), 'une règle du widget, pas du lien public');
+  assert.deepEqual(keyAclRules([]), []);
+  // Posées une fois : le même ensemble ne change rien ; une table de plus ajoute sa règle sans toucher aux autres.
+  const resources = [{ id: 1, tableId: 'Annuaire', colIds: 'id_sync' }];
+  const placed = [{ id: 1, resource: 1, rulePos: -1, aclFormula: 'user.Access == VIEWER', permissionsText: '-R', memo: KEY_MEMO }];
+  assert.deepEqual(aclActions(resources, placed, keyAclRules(['Annuaire'])), []);
+  assert.notDeepEqual(aclActions(resources, placed, keyAclRules(['Annuaire', 'Villes'])), []);
+  assert.notDeepEqual(aclActions(resources, placed, []), [], 'plus de clé : la règle part');
 });
 
 test('lecture seule : la règle en place ne part pas avec la note, seul un propriétaire la lève', () => {
@@ -81,7 +104,7 @@ test('règles du widget : remplacées seulement si elles diffèrent, avant toute
     { id: 5, resource: 1, rulePos: 1, aclFormula: 'user.Email == "a@b.fr"', permissionsText: '+R', memo: '' },
     { id: 6, resource: 1, rulePos: -1, aclFormula: 'user.Access == VIEWER', permissionsText: '-R', memo: PUBLIC_MEMO },
   ];
-  const wanted = [...publicAclRules([E]), ...ownerAclRules()];
+  const wanted = [...publicAclRules([E]), ...ownerAclRules([E])];
   const actions = aclActions(resources, rules, wanted);
   assert.deepEqual(actions[0], ['BulkRemoveRecord', '_grist_ACLRules', [6]], 'règle du widget qui n\'a plus lieu d\'être retirée, celle d\'autrui gardée');
   assert.deepEqual(actions.filter(a => a[1] === '_grist_ACLResources').map(a => [a[2], `${a[3].tableId}:${a[3].colIds}`]),
