@@ -635,6 +635,28 @@ test('l\'ouverture garde le fichier que GFS passe — `lecture` { id (texte), fi
   assert.deepEqual(Object.keys(seen[1]).sort(), ['dossier', 'fichier', 'raison', 'type'], 'sans fichier passé, ni `importation` ni `lecture`');
 });
 
+test('l\'ouverture garde `modele` { id } (l\'identifiant en texte) du contexte et de l\'appel `ouvrir`, sans clé de plus ; un `modele` sans identifiant ou qui n\'est pas un objet est écarté', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 1000 });
+  fake.replyTo('contexte', { ...CONTEXT, ouverture: { fichier: null, type: 'document', dossier: '', raison: 'modele', modele: { id: 'facture', nom: 'pas gardé' } } });
+  await link.ready;
+  const opening = link.opening();
+  assert.deepEqual(Object.keys(opening).sort(), ['dossier', 'fichier', 'modele', 'raison', 'type']);
+  assert.deepEqual([opening.fichier, opening.type, opening.raison, opening.modele], [null, 'document', 'modele', { id: 'facture' }]);
+  opening.modele.id = 'changé';
+  assert.equal(link.opening().modele.id, 'facture', 'chaque lecture a sa copie');
+
+  const seen = [];
+  link.onOpen((request) => { seen.push(request); return true; });
+  const open = (id, modele) => fake.deliver({ gfs: 0, type: 'appel', id, nom: 'ouvrir', args: { fichier: null, type: 'grille', dossier: '', raison: 'modele', modele } });
+  open(5, { id: 12 });
+  open(6, { id: '  ' });
+  open(7, 'facture');
+  open(8, null);
+  assert.deepEqual(seen[0].modele, { id: '12' }, 'un identifiant numérique devient du texte');
+  assert.deepEqual(seen.slice(1).map(request => Object.keys(request).sort()), Array(3).fill(['dossier', 'fichier', 'raison', 'type']));
+});
+
 test('l\'ouverture ne garde ni `importation` ni `lecture` qui ne portent pas un File ou un Blob, ni une `lecture` sans identifiant', async () => {
   const fake = gfs();
   const link = createGfsLink({ host: fake.host, timeoutMs: 1000 });

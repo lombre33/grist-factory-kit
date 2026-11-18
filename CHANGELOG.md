@@ -2,6 +2,13 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.24.0 : l'ouverture garde `modele` (18/11/2026)
+
+Demande du porteur de GFS (18/11) : « Nouveau > Depuis un modèle », une fenêtre qui réunit les modèles de départ de toutes les apps (choix « Une galerie commune », contrats 5.4, point 13). Quand la personne en choisit un, GFS ouvre l'app avec `{ fichier: null, type, dossier, raison: 'modele', modele: { id } }`.
+
+- **`GfsLink.opening()` et l'argument de `GfsLink.onOpen`** gardent `modele: { id }` (l'identifiant comme texte, une copie par lecture) ; sans identifiant, ou si `modele` n'est pas un objet, la clé n'existe pas, comme `importation` et `lecture`. Rien d'autre ne change : une app qui ne lit pas `modele` n'est pas touchée.
+- **Essais** : un essai de plus dans `test/gfs-link.test.mjs` (il échoue sur 0.23.0).
+
 ## 0.23.0 : le moteur de partage 5.0.2, repris de Sync+ (17/11/2026)
 
 Sync+ a livré, depuis la 2.7.0, vingt versions dont trois majeures, 3.0.0, 4.0.0 et 5.0.0 (commit `df416b0`, moteur **5.0.2**) : la copie du kit passe de 2.7.0 à **5.0.2**. Le port (`PORT_SHAPE`), les noms de tables et le texte des formules de `Synchro` ne changent pas : un hôte qui prend le moteur en entier n'a rien à écrire pour que son partage continue. Trois choses sont à savoir.

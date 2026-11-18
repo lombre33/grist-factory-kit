@@ -70,16 +70,21 @@ const isBlob = value => typeof Blob !== 'undefined' && value instanceof Blob;
 // `importation: { valeur, fichier }` (raison `importer`) et `lecture: { id, fichier }` (raison `lire`) : le `File` que la personne a choisi ou que GFS a téléchargé, gardé tel qu'il est arrivé (il ne se
 // copie pas). Sans un vrai `File` ou `Blob`, la clé n'est pas gardée : mieux vaut qu'elle manque que de faire croire à l'app qu'elle a un fichier.
 const normalizeImportation = raw => (isObject(raw) && isBlob(raw.fichier) ? { valeur: text(raw.valeur), fichier: raw.fichier } : null);
+// `modele` de l'ouverture (contrats 5.4, point 13) : { id }, l'identifiant d'une entrée du catalogue de l'app (comme texte) ; null sans identifiant.
+const normalizeModel = raw => (isObject(raw) && raw.id != null && String(raw.id).trim() !== '' ? { id: String(raw.id).trim() } : null);
 const normalizeReading = raw => (isObject(raw) && isBlob(raw.fichier) && raw.id != null && String(raw.id).trim() !== '' ? { id: String(raw.id).trim(), fichier: raw.fichier } : null);
 
 // `ouverture` du contexte (contrats 5.2, point 3) ou `args` de l'appel `ouvrir` (5.4) : { fichier, type, dossier, raison }, où `fichier` est null (« Nouveau ») ou { id, type }, l'`id` pris
-// comme texte ; plus `importation` ou `lecture` quand GFS passe un fichier à l'app. null quand ce n'est pas un objet.
+// comme texte ; plus `importation` ou `lecture` quand GFS passe un fichier à l'app, ou `modele` ({ id }) quand la personne a choisi un modèle de départ (« Nouveau > Depuis un
+// modèle »). null quand ce n'est pas un objet.
 function normalizeOpening(raw) {
   if (!isObject(raw)) return null;
   const file = isObject(raw.fichier) && raw.fichier.id != null && String(raw.fichier.id).trim() !== '' ? raw.fichier : null;
   const opening = { fichier: file ? { id: String(file.id).trim(), type: text(file.type) } : null, type: text(raw.type), dossier: text(raw.dossier), raison: text(raw.raison) };
   const importation = normalizeImportation(raw.importation);
   const reading = normalizeReading(raw.lecture);
+  const model = normalizeModel(raw.modele);
+  if (model) opening.modele = model;
   if (importation) opening.importation = importation;
   if (reading) opening.lecture = reading;
   return opening;
@@ -88,7 +93,7 @@ function normalizeOpening(raw) {
 // La copie de l'ouverture que l'app lit : chaque lecture la sienne, sauf le fichier passé, qui est le même `File` (il ne se copie pas, et la copie d'un `File` perd son nom hors des navigateurs).
 function copyOpening(opening) {
   if (opening === null) return null;
-  const { importation, lecture, ...rest } = opening;
+  const { importation, lecture, ...rest } = opening; // `modele` ne porte que du texte : `copy` le copie avec le reste
   return { ...copy(rest), ...(importation ? { importation: { ...importation } } : {}), ...(lecture ? { lecture: { ...lecture } } : {}) };
 }
 
