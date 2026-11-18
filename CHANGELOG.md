@@ -2,6 +2,18 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.25.0 : relayer à GFS les appels que la politique de sécurité de l'app bloque (18/11/2026)
+
+Demande du porteur de GFS (18/11) : « une alerte si une librairie se met à faire un appel externe autre que les liens prévus et validés dans la CSP (compromission d'un serveur de commande, par exemple) », choisie sous la forme « alertes relayées par les apps » (cahier de GFS 3.2.2, règle S8 ; contrats de GFS 5.4, point 14). GFS ne voit un cadre d'app que de l'extérieur : une violation de politique ne se lève que dans le cadre qui la subit (mesuré, Firefox 160). Le relais est dans l'app, donc dans le kit.
+
+- **`Violations.start()`** (`js/violations.js`) : une fois, au démarrage de l'app. Écoute `securitypolicyviolation` sur la page et dit à GFS, sans réponse attendue, `{ quoi: 'relais', kit }` au départ puis `{ quoi: 'bloque', directive, cible, source, disposition, fois }` pour chaque violation nouvelle. **`import './kit/js/violations-start.js'` en tête du module d'entrée** démarre le relais avant que les autres modules s'évaluent (une violation d'avant `start()` n'est pas vue).
+- **`createViolations({ link })`** (`js/violations-pose.js`) : la même pose pour une app qui a son propre lien avec GFS (Publipostage+), qui doit savoir `hosted` et `tell(nom, args)`.
+- **`normalizeViolation`** (`js/violations-message.js`) : **seul le nom d'hôte part**, jamais le chemin, les paramètres ni le fragment (c'est là que se trouve ce qu'un code piraté cherchait à envoyer) ; la directive est un nom connu ou « autre » ; « qui l'a demandé » est « app », un hôte de bibliothèque, « inconnue » ou « autre ».
+- **Plafonds** : la même violation ne repart qu'à la 1re, 10e, 100e et 1000e fois (`fois` dit le compte) ; au plus 50 violations différentes et 200 messages par page.
+- **`GfsLink.tell(nom, args)`** : un appel sans `id` (5.1, point 2) ; faux quand l'app est seule.
+- **Ce que le relais n'est pas** : une protection. La protection est la politique de l'app, que le navigateur applique ; un code piraté peut aussi taire le relais, et un appel vers une adresse que la politique permet ne lève aucun événement. GFS le dit dans sa fenêtre « Dépendances ».
+- **Essais** : `test/violations.test.mjs` (treize : l'hôte seul, les mots du navigateur, les directives, qui a demandé, les plafonds, l'app seule, `stop`, `GfsLink.tell`).
+
 ## 0.24.0 : l'ouverture garde `modele` (18/11/2026)
 
 Demande du porteur de GFS (18/11) : « Nouveau > Depuis un modèle », une fenêtre qui réunit les modèles de départ de toutes les apps (choix « Une galerie commune », contrats 5.4, point 13). Quand la personne en choisit un, GFS ouvre l'app avec `{ fichier: null, type, dossier, raison: 'modele', modele: { id } }`.

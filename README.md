@@ -2,7 +2,7 @@
 
 Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, le lien avec GFS, le widget qui héberge les apps (les liens entre apps, les fichiers qu'il leur passe, les exports qu'il range), l'ambiance qu'il leur donne, et le calendrier (mois, semaine, jour) qu'une app monte dans sa page. Des modules ES pour le navigateur et quatre feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
 
-Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.8.0** ([CHANGELOG](CHANGELOG.md)).
+Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.25.0** ([CHANGELOG](CHANGELOG.md)).
 
 Le kit est la couche du bas : il n'importe rien (ni app, ni GFS, ni bibliothèque). Une app importe le kit, jamais une autre app ; une extension importe son app et le kit, jamais une autre extension.
 
@@ -146,6 +146,20 @@ const ambiance = createAmbiance({ link: monLien, isDark: () => monThemeEstSombre
 ```
 
 `createAmbiance({ link, isDark, doc, win })` demande `link` et `isDark` (une erreur sinon) ; `doc` et `win` sont la page, pour un essai.
+
+## Les appels bloqués par la politique de sécurité, relayés à GFS
+
+GFS ne voit un cadre d'app que de l'extérieur : quand la politique de sécurité de la page (sa `Content-Security-Policy`) bloque un appel, l'événement `securitypolicyviolation` ne se lève que **dans le cadre de l'app** (mesuré, Firefox 160 : le cadre parent n'en voit aucun). Si une bibliothèque piratée tente d'envoyer des données vers une adresse que la politique ne prévoit pas, seule l'app peut le dire. Le kit le relaie (cahier de GFS 3.2.2, règle S8 ; contrats de GFS 5.4, point 14) :
+
+```js
+import './kit/js/violations-start.js';   // en tête du module d'entrée : le relais écoute avant que les autres modules s'évaluent
+// ou, plus tard : import { Violations } from './kit/js/violations.js'; Violations.start();
+```
+
+- **Ce qui part** : `{ quoi: 'relais', kit }` au départ, puis `{ quoi: 'bloque', directive, cible, source, disposition, fois }`. **Seul le nom d'hôte part** : jamais le chemin, les paramètres ni le fragment (c'est là que se trouve ce qu'un code piraté cherchait à envoyer).
+- **Plafonds** : la même violation ne repart qu'à la 1re, 10e, 100e et 1000e fois ; au plus 50 violations différentes et 200 messages par page.
+- **Ce que c'est** : une information, pas une protection. La protection est la politique de l'app (le navigateur l'applique) ; un code piraté peut aussi taire le relais ; un appel vers une adresse que la politique permet ne lève aucun événement.
+- **Seule**, l'app n'écoute rien. Une app qui a son propre lien avec GFS (Publipostage+) prend `createViolations({ link })` de `js/violations-pose.js` (`link` sait `hosted` et `tell(nom, args)`).
 
 ## Les correcteurs du navigateur, coupés par un bouton de GFS
 

@@ -240,6 +240,12 @@ function post(link, fields) {
   } catch (error) { return false; }
 }
 
+// Un message à GFS qui n'attend pas de réponse (5.1, point 2) : un appel sans `id`. Faux quand l'app est seule ou que le cadre parent n'est plus là (le relais des appels bloqués,
+// js/violations-pose.js).
+function tell(link, name, args) {
+  return link.hosted && post(link, { type: 'appel', nom: name, ...(args === undefined ? {} : { args }) });
+}
+
 // Un appel de l'app à GFS, qui attend sa réponse : `timeoutMs` pour le contexte, aucun délai pour ce qui attend une personne (`installer`). Une erreur de GFS rejette avec son `code`.
 function call(link, name, args, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -530,6 +536,7 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     library: id => copy(link.libraries.get(id)),
     native: id => copy(link.natives.get(id)),
     copies: () => (link.hosted ? hostCopies(host.location && host.location.search) : []),
+    tell: (name, args) => tell(link, String(name), args),
     storageGet: key => storageGet(link, key),
     storageSet: (key, value) => storageSet(link, key, value),
     hideBar: hidden => hideBar(link, hidden),
