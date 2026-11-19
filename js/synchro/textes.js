@@ -1,5 +1,5 @@
 // Les textes que le moteur de partage (js/synchro/) demande à son hôte par `port.text(clé, valeurs)`, en français et en anglais : `error.<code>` pour les erreurs prévues, `diag.*` pour le diagnostic à copier, `recv.*` pour ce qu'il écrit
-// dans le document. Repris de i18n/fr.json et i18n/en.json de Sync+ (commit df416b0, moteur 5.0.2) par outils/reprendre-synchro.mjs ; l'hôte rend la clé elle-même quand il ne la connaît pas.
+// dans le document. Repris de i18n/fr.json et i18n/en.json de Sync+ (commit 1473d4c, moteur 5.0.5) par outils/reprendre-synchro.mjs ; l'hôte rend la clé elle-même quand il ne la connaît pas.
 export const TEXTES = Object.freeze({
   fr: Object.freeze({
     "recv.archive.col": "Supprimée à la source",
@@ -53,6 +53,7 @@ export const TEXTES = Object.freeze({
     "error.exchangeOwner": "Un Échange crée aussi un envoi depuis ce document : il faut en être propriétaire.",
     "error.linkTest": "Le lien ne fonctionne pas ({detail}). Vérifiez que le formulaire est publié et que le document est dans un espace d’équipe.",
     "error.linkElsewhere": "Ce lien n’écrit pas dans le journal de cette réception (formulaire d’une autre réception, ou d’un autre document). Copiez le lien du formulaire indiqué ci-dessus.",
+    "error.gristUnreachable": "Grist n’a pas répondu à la requête du widget (« {request} »), ou le navigateur ne l’a pas laissé lire la réponse. Le plus souvent, le serveur a refusé le jeton d’accès que Grist vient de donner au widget, ou un proxy, un pare-feu ou une extension du navigateur bloque la requête. Rechargez la page. Si l’erreur revient : essayez dans une fenêtre privée sans extension, puis depuis un autre réseau. Pour l’administrateur de l’instance : dans la console du navigateur, l’erreur « CORS » donne un code d’état (401, 502…) qui dit qui a refusé.",
     "error.generic": "Erreur : {detail}",
     "error.blockedRules": "Une règle d’accès de ce document empêche le widget d’écrire ici ({detail}). Dans Grist : Paramètres du document, Règles d’accès ; retirez ou assouplissez la règle qui touche cette table. Les tables du widget (Synchro, journaux) et les tables reçues doivent rester modifiables par les personnes qui s’en servent.",
     "error.rulesRefused": "Grist a refusé de poser les règles d’accès du widget (« {why} ») : aucun export n’est créé tant que la table Synchro n’est pas protégée. Dans Grist, Paramètres du document, Règles d’accès : corrigez la règle qui vise une colonne ou une table qui n’existe plus, puis recommencez.",
@@ -195,6 +196,7 @@ export const TEXTES = Object.freeze({
     "error.exchangeOwner": "An Exchange also creates a sending from this document: you must own it.",
     "error.linkTest": "The link does not work ({detail}). Check that the form is published and the document is in a team site.",
     "error.linkElsewhere": "This link does not write into this reception’s journal (another reception’s form, or another document’s). Copy the link of the form named above.",
+    "error.gristUnreachable": "Grist did not answer the widget’s request (“{request}”), or the browser did not let it read the answer. Most often the server refused the access token Grist has just given the widget, or a proxy, a firewall or a browser extension blocks the request. Reload the page. If the error comes back: try a private window without extensions, then another network. For the instance administrator: in the browser console, the “CORS” error gives a status code (401, 502…) that says who refused.",
     "error.generic": "Error: {detail}",
     "error.blockedRules": "An access rule of this document stops the widget from writing here ({detail}). In Grist: Document settings, Access rules; remove or relax the rule that applies to this table. The widget’s tables (Synchro, journals) and the received tables must stay editable by the people who use them.",
     "error.rulesRefused": "Grist refused to set the widget’s access rules (“{why}”): no export is created until the Synchro table is protected. In Grist, Document settings, Access rules: fix the rule that targets a column or table that no longer exists, then try again.",

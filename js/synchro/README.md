@@ -1,4 +1,4 @@
-> **Copie** du moteur de Sync+ (commit `df416b0`, moteur 5.0.2), reprise par `outils/reprendre-synchro.mjs` : ne pas la modifier ici sans le dire à Sync+ (consignes/sync/ dans GFS). Les textes de l'hôte sont dans `textes.js`.
+> **Copie** du moteur de Sync+ (commit `1473d4c`, moteur 5.0.5), reprise par `outils/reprendre-synchro.mjs` : ne pas la modifier ici sans le dire à Sync+ (consignes/sync/ dans GFS). Les textes de l'hôte sont dans `textes.js`.
 
 # Le moteur de syncPlus (`js/engine/`)
 

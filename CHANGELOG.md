@@ -2,6 +2,16 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.26.0 : le moteur de partage 5.0.5, repris de Sync+ (19/11/2026)
+
+Sync+ a livré trois correctifs le 18/11 (commit `1473d4c`, moteur **5.0.5**, syncPlus 0.30.5 à 0.30.7) : la copie du kit passe de 5.0.2 à **5.0.5**. Le port (`PORT_SHAPE`), les noms de tables, `CODE_FORMAT` (2) et le texte des formules de `Synchro` (`formulas-golden`) ne changent pas : une app qui ne se sert pas du moteur n'a rien à faire, et le code d'hôte de GFS non plus.
+
+- **5.0.3** : la boucle de recopie de la CIBLE (`logic/rhythm.js`, `target/loop.js`) lisait « Grist n'a pas répondu à la comparaison » comme « rien n'a changé » ; quand la comparaison (`GET /compare`) est bloquée en route (mandataire, pare-feu, 403 sans CORS), la recopie n'avait lieu que toutes les cinq minutes au lieu de dix secondes. Elle garde maintenant le rythme d'avant la comparaison. Le texte `error.gristUnreachable` dit ce que la personne peut faire (en français et en anglais, dans `textes.js`).
+- **5.0.4** : les deux lectures SQL du moteur (`keyCountSql`, `journalStats`) n'ont plus de `case when`. Le pare-feu devant le Grist de la DINUM (Incapsula) refuse en 403, sans en-tête CORS, toute demande dont l'adresse ou le corps contient `case when`, `or 1=1` ou `drop table` ; ces lectures rendaient `null` et le moteur retombait sur la lecture des tables entières. Les mêmes nombres sortent (comparé sur un vrai Grist). **Un hôte qui écrit lui-même du SQL (`querySql`) s'en garde aussi** : GFS l'a fait pour sa lecture du poids (faits vérifiés 136).
+- **5.0.5** : `planConsolidation` écrit les versions pas encore recopiées de la plus ancienne à la plus récente (`inArrivalOrder`, `compareVersion`), donc les lignes nouvelles arrivent dans la CIBLE dans l'ordre de la SOURCE, plus à l'envers. L'ordre des actions `BulkAddOrUpdateRecord` et des marques du journal change, rien d'autre.
+- **Outil `reprendre-synchro.mjs`** : il adapte aussi l'essai du pare-feu (`test/synchro-sql-firewall.test.mjs` : la racine est celle du kit et il lit `js/synchro/`).
+- **Essais** : 473 essais `test/synchro-*` verts (`synchro-rhythm`, `synchro-sql-firewall` et un essai de `synchro-consolidation` de plus).
+
 ## 0.25.0 : relayer à GFS les appels que la politique de sécurité de l'app bloque (18/11/2026)
 
 Demande du porteur de GFS (18/11) : « une alerte si une librairie se met à faire un appel externe autre que les liens prévus et validés dans la CSP (compromission d'un serveur de commande, par exemple) », choisie sous la forme « alertes relayées par les apps » (cahier de GFS 3.2.2, règle S8 ; contrats de GFS 5.4, point 14). GFS ne voit un cadre d'app que de l'extérieur : une violation de politique ne se lève que dans le cadre qui la subit (mesuré, Firefox 160). Le relais est dans l'app, donc dans le kit.

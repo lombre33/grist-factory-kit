@@ -44,6 +44,9 @@ for (const name of readdirSync(tests).sort()) {
     .replaceAll("join(ROOT, 'js/engine')", "join(ROOT, 'js/synchro')")
     .replaceAll("'./golden/", "'./synchro-golden/")
     .replaceAll("'../..')", "'..')")
+    // L'essai du pare-feu de la DINUM (moteur 5.0.4) lit les textes `select …` de tout `js/` de Sync+ : dans le kit, c'est `js/synchro/` (la racine est celle du kit).
+    .replace("const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');", "const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');")
+    .replace("sources(join(ROOT, 'js'))", "sources(join(ROOT, 'js', 'synchro'))")
     // Le test du port de Sync+ lit son fichier `js/sync-port.js`, qui n'est pas dans le kit : le port de l'hôte (GFS) a ses propres essais.
     .replace(/test\('le port de (?:Sync\+|syncPlus) a la forme[\s\S]*?\n\}\);\n\n/, '');
   writeFileSync(join(KIT, 'test', target), rewritten);
