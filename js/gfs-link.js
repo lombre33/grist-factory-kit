@@ -1,7 +1,8 @@
 // Le lien avec Grist Factory Suite (GFS), le widget qui héberge les apps : ce que l'app sait de GFS quand il l'héberge, et ses replis quand elle tourne seule (une section de Grist
 // qui charge l'adresse de son dépôt). Extrait de Publipostage+ (`js/gfs-link.js` à 487d66b), avec la barre de GFS et le repli du stockage en plus. Les messages ont l'enveloppe des
-// contrats de GFS (section 5) : { gfs: <contrat>, type: 'appel' | 'reponse' | 'erreur' | 'evenement', id, nom, args | data }, postés au cadre parent avec `targetOrigin '*'` (le cadre
-// d'une app dans GFS a une origine opaque), sans le `mtype` du protocole des widgets : le script d'API de Grist les ignore.
+// contrats de GFS (section 5) : { gfs: <contrat>, type: 'appel' | 'reponse' | 'erreur' | 'evenement', id, nom, args | data }, postés au cadre parent : à `targetOrigin '*'` tant que GFS n'a rien
+// dit (la demande de `contexte` ne porte aucune donnée), puis à l'origine de GFS, retenue au premier message qui la dit (le cadre de l'app, lui, a une origine opaque : GFS ne peut viser que `'*'`),
+// sans le `mtype` du protocole des widgets : le script d'API de Grist les ignore.
 //   await GfsLink.ready;                         // le contexte est arrivé, ou ses 5 secondes sont passées : jamais rejetée, tout de suite quand l'app est seule
 //   GfsLink.hosted                               // GFS héberge l'app : `gfs=<n>` dans l'adresse de son cadre (js/host.js), sans rien demander
 //   GfsLink.context()                            // ce que le contexte dit une fois pour toutes (instance, document, page, adresseWidget, acces, lectureSeule…, contrats 5.2), ou null
@@ -232,10 +233,11 @@ function applyEvent(link, name, data) {
   EVENTS[name](link, data);
 }
 
-// Poste au cadre parent (GFS) un message de l'enveloppe, au contrat de l'app. Faux quand le cadre parent n'est plus là.
+// Poste au cadre parent (GFS) un message de l'enveloppe, au contrat de l'app. Faux quand le cadre parent n'est plus là. Tant que GFS n'a pas parlé, l'origine du cadre parent n'est pas
+// connue : le premier message (la demande de `contexte`) part à '*'. Ensuite il part à l'origine de GFS, et le navigateur le jette si le parent n'est plus à cette origine.
 function post(link, fields) {
   try {
-    link.host.parent.postMessage({ gfs: CONTRACT, ...fields }, '*');
+    link.host.parent.postMessage({ gfs: CONTRACT, ...fields }, link.hostOrigin || '*');
     return true;
   } catch (error) { return false; }
 }
@@ -352,9 +354,16 @@ function receiveCall(link, message) {
   if (link.openHandler) deliverOpen(link, request); else link.earlyOpens.push(request);
 }
 
+// L'origine de GFS, telle que le navigateur la dit sur son premier message valide : un `http(s)://hôte` sans chemin. Un cadre d'origine opaque dit `null`, une origine inconnue rien : elle n'est pas retenue.
+const ORIGIN = /^https?:\/\/[^/]+$/;
+function holdOrigin(link, origin) {
+  if (!link.hostOrigin && typeof origin === 'string' && ORIGIN.test(origin)) link.hostOrigin = origin;
+}
+
 function receive(link, event) {
   const message = event.data;
   if (event.source !== link.host.parent || !isObject(message) || message.gfs !== link.contract) return;
+  holdOrigin(link, event.origin);
   if (message.type === 'reponse' || message.type === 'erreur') answered(link, message);
   else if (message.type === 'evenement') applyEvent(link, message.nom, message.data);
   else if (message.type === 'appel') receiveCall(link, message);
@@ -502,7 +511,7 @@ function newLink(host) {
   const framed = Boolean(host && host.parent) && host.parent !== host;
   const contract = framed ? hostContract(host.location && host.location.search) : null;
   return {
-    host, contract, hosted: contract !== null, known: false, nextId: 1,
+    host, contract, hosted: contract !== null, hostOrigin: null, known: false, nextId: 1,
     context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, correcteurs: normalizeCorrecteurs(null), storage: null, extensions: [], libraries: new Map(), natives: new Map(),
     listeners: { language: new Set(), bar: new Set(), identity: new Set(), ambiance: new Set(), correcteurs: new Set(), extensions: new Set() },
     pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null, stayHandler: null, deleteHandler: null, copyHandler: null,
@@ -511,7 +520,8 @@ function newLink(host) {
 
 function start(link, timeoutMs) {
   if (!link.hosted) return Promise.resolve();
-  link.host.addEventListener('message', event => receive(link, event));
+  // Le garde se lit là où l'écoute est posée : seul le cadre parent (GFS) est écouté ; `receive` vérifie ensuite l'enveloppe.
+  link.host.addEventListener('message', event => { if (event.source === link.host.parent) receive(link, event); });
   return call(link, 'contexte', undefined, timeoutMs).then(data => applyContext(link, data), error => console.warn('[GfsLink] contexte indisponible', error)).then(() => undefined);
 }
 

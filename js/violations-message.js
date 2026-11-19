@@ -7,7 +7,7 @@ import { once } from './once.js';
 once('violations-message', import.meta.url);
 
 // La version du kit, dite à GFS quand l'app active le relais : il l'affiche à côté de « relais actif ». Un essai la garde égale à celle de `package.json`.
-export const KIT_VERSION = '0.25.0';
+export const KIT_VERSION = '0.27.0';
 
 // Les directives dont GFS accepte le nom ; tout autre vaut « autre ».
 export const DIRECTIVES = Object.freeze(['default-src', 'script-src', 'script-src-elem', 'script-src-attr', 'style-src', 'style-src-elem', 'style-src-attr', 'img-src', 'font-src',
@@ -34,10 +34,18 @@ export function normalizeViolation(event, home = '') {
   const given = event !== null && typeof event === 'object' ? event : {};
   const directive = String(given.effectiveDirective || given.violatedDirective || '').trim().split(/\s+/)[0].toLowerCase();
   const raw = String(given.blockedURI || '');
-  const file = String(given.sourceFile || '');
-  const sourceHost = file ? hostOf(file) : null;
-  let source = 'inconnue';
-  if (file) source = sourceHost && sourceHost === String(home).toLowerCase() ? 'app' : (sourceHost || 'autre');
-  return { directive: DIRECTIVES.includes(directive) ? directive : 'autre', cible: KEYWORDS.has(raw.toLowerCase()) ? raw.toLowerCase() : (hostOf(raw) || 'autre'), source,
+  return { directive: DIRECTIVES.includes(directive) ? directive : 'autre', cible: targetOf(raw), source: sourceOf(String(given.sourceFile || ''), home),
     disposition: given.disposition === 'report' ? 'report' : 'enforce' };
+}
+
+// Ce qui a été bloqué : un mot de KEYWORDS, un nom d'hôte, ou « autre ».
+function targetOf(raw) {
+  return KEYWORDS.has(raw.toLowerCase()) ? raw.toLowerCase() : (hostOf(raw) || 'autre');
+}
+
+// Qui l'a demandé : « app » (le code de l'app), un nom d'hôte, « inconnue » (le navigateur ne le dit pas) ou « autre ».
+function sourceOf(file, home) {
+  if (!file) return 'inconnue';
+  const host = hostOf(file);
+  return host && host === String(home).toLowerCase() ? 'app' : (host || 'autre');
 }

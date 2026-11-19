@@ -2,9 +2,15 @@
 
 Le kit commun des apps Grist Factory (Publipostage+, Form+, Automation+, Grist-BI…) : les jetons de la charte, le thème, la traduction français / anglais, les fenêtres, les saisies et confirmations, l'empilement des couches, le sélecteur de couleur, le lien avec GFS, le widget qui héberge les apps (les liens entre apps, les fichiers qu'il leur passe, les exports qu'il range), l'ambiance qu'il leur donne, et le calendrier (mois, semaine, jour) qu'une app monte dans sa page. Des modules ES pour le navigateur et quatre feuilles de style, **aucune bibliothèque tierce**, aucune adresse externe.
 
-Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.25.0** ([CHANGELOG](CHANGELOG.md)).
+Une app ne copie pas le kit : elle le **référence**, en sous-module Git (`kit/`), à une étiquette. Un changement du kit est une nouvelle étiquette ; l'app avance sa référence quand elle le décide (Dependabot le propose). Version actuelle : **0.27.0** ([CHANGELOG](CHANGELOG.md)).
 
 Le kit est la couche du bas : il n'importe rien (ni app, ni GFS, ni bibliothèque). Une app importe le kit, jamais une autre app ; une extension importe son app et le kit, jamais une autre extension.
+
+## À quoi sert le kit
+
+Il évite à chaque app de réécrire ce qu'elles partagent : l'interface (jetons, thème, fenêtres), le texte (français et anglais), la liaison avec GFS et le moteur de partage entre documents. Il n'appelle jamais Grist de lui-même, n'a aucun jeton et aucune adresse externe : le moteur de partage, quand une app le monte, n'agit que par le port que l'app lui donne (ses lectures, ses écritures, son accès réseau).
+
+**Stockage du navigateur** : le kit n'écrit dans `localStorage` que des choix d'affichage de la personne (thème, langue, préférences que l'app lui confie), sous des clés que l'app nomme ; jamais le contenu d'un document. Dans GFS, ces choix partent chez GFS (le cadre n'a pas de stockage). Le kit gère un refus du navigateur sans rien casser.
 
 ## L'utiliser
 

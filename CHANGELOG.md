@@ -2,6 +2,17 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.27.0 : le lien se fie à GFS plus finement, et se lit mieux à l'audit (19/11/2026)
+
+Demande du porteur de GFS (19/11) : l'outil d'audit `gw-audit` faisait perdre jusqu'à 9 points de note aux apps qui embarquent le kit (Automation+ 81 contre 90 sans lui) par deux constats « majeur » dans `js/gfs-link.js`. Étude et mesures : `audits/gw-audit-kit-2026-11-19/` du projet de GFS. Rien ne change pour une app : aucune fonction ajoutée ni retirée, le contrat 5 est le même.
+
+- **L'origine de GFS est retenue.** Le premier message de l'app (la demande de `contexte`, qui ne porte aucune donnée) part à `'*'` : l'app ne sait pas encore d'où elle est cadrée, et le cadre d'une app dans GFS a une origine opaque. Dès que GFS a envoyé un message valide (son cadre, son contrat), l'app retient l'origine que le navigateur lui donne (`event.origin`, un `http(s)://hôte` sans chemin ; `null` ou rien : pas retenue) et tous les envois suivants la visent : si le cadre parent n'est plus à cette origine, le navigateur jette le message. Le sens GFS → app garde `'*'` (une origine opaque ne peut pas être visée). Mesuré dans Chromium, dans le cadre isolé du banc (`navigateur/scenarios-gfs.mjs` : tous les envois suivants arrivent).
+- **Le garde de l'écoute se lit là où elle est posée** : `if (event.source === link.host.parent)` dans l'écoute elle-même, avant `receive`, qui vérifie encore l'enveloppe. Même comportement ; l'outil d'audit, qui ne lit que le texte de la fonction passée à `addEventListener`, voyait une écoute sans vérification.
+- **`normalizeViolation`** (0.25.0) : coupée en trois (`targetOf`, `sourceOf`), complexité 16 → sous le seuil de 15 ; mêmes résultats.
+- **`KIT_VERSION`** (`js/violations-message.js`) rejoint le numéro de la version : la 0.26.0 l'avait laissé à `0.25.0`, et l'essai qui le compare à `package.json` échouait.
+- **README** : une rubrique « À quoi sert le kit » et ce que le kit garde dans `localStorage` (des choix d'affichage, sous des clés que l'app nomme) ; **`SECURITY.md`**.
+- **Essais** : deux dans `test/gfs-link.test.mjs` (l'origine retenue, puis les cas où elle ne l'est pas : un autre cadre, un autre contrat, `null`, une adresse avec chemin, rien ; la première retenue reste) ; ils échouent sur 0.26.0. Le scénario Chromium du lien a un commentaire de plus sur ce qu'il prouve.
+- **Note d'audit mesurée** (`gw-audit` à `015db5f`) : Automation+ 81 → 87, Grist-BI 57 → 60, GFS 70 → 73, le kit seul 93 → 96 ; une app n'en profite qu'en avançant sa référence du kit. Le README de l'app, lui, doit dire qu'elle garde des choix dans `localStorage` (un constat « majeur » devient « mineur ») : une phrase.
 ## 0.26.0 : le moteur de partage 5.0.5, repris de Sync+ (19/11/2026)
 
 Sync+ a livré trois correctifs le 18/11 (commit `1473d4c`, moteur **5.0.5**, syncPlus 0.30.5 à 0.30.7) : la copie du kit passe de 5.0.2 à **5.0.5**. Le port (`PORT_SHAPE`), les noms de tables, `CODE_FORMAT` (2) et le texte des formules de `Synchro` (`formulas-golden`) ne changent pas : une app qui ne se sert pas du moteur n'a rien à faire, et le code d'hôte de GFS non plus.

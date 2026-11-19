@@ -42,7 +42,8 @@ export async function gfsLink(env) {
 
   const set = await app.evaluate(() => window.cadre.GfsLink.storageSet('kit_theme', 'light'));
   const writes = await until(() => fromApp(page, data => data && data.nom === 'stockage.ecrire').then(found => (found.length ? found : null)));
-  check('un choix gardé change la copie de l\'app et part chez GFS par « stockage.ecrire », sans id', set === true && writes && writes.length === 1 && !('id' in writes[0])
+  // Le contexte est arrivé : l'app a retenu l'origine de GFS, et cet envoi la vise (une origine mal visée, le navigateur jette le message sans rien dire : il n'arriverait pas).
+  check('un choix gardé change la copie de l\'app et part chez GFS par « stockage.ecrire », sans id, à l\'origine retenue de GFS', set === true && writes && writes.length === 1 && !('id' in writes[0])
     && JSON.stringify(writes[0].args) === JSON.stringify({ cle: 'kit_theme', valeur: 'light' }) && (await state()).theme === 'light', writes);
 
   await neighbour.evaluate(() => window.parent[0].postMessage({ gfs: 0, type: 'evenement', nom: 'langue', data: { langue: 'fr' } }, '*'));

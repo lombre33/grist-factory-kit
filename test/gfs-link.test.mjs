@@ -10,7 +10,7 @@ function gfs({ search = '?gfs=0&language=fr', localStorage = null } = {}) {
   const listeners = [];
   const parent = { postMessage: (message, origin) => sent.push({ message: structuredClone(message), origin }) };
   const host = { location: { search }, parent, localStorage, addEventListener: (type, fn) => { if (type === 'message') listeners.push(fn); } };
-  const deliver = (data, source = parent) => listeners.forEach(fn => fn({ data, source }));
+  const deliver = (data, source = parent, origin = undefined) => listeners.forEach(fn => fn({ data, source, ...(origin === undefined ? {} : { origin }) }));
   const calls = name => sent.map(entry => entry.message).filter(message => message.type === 'appel' && message.nom === name);
   const replyTo = (name, data) => deliver({ gfs: 0, type: 'reponse', id: calls(name).at(-1).id, data });
   return { host, sent, listeners, deliver, calls, replyTo };
@@ -143,6 +143,35 @@ test('un message d\'un autre cadre, d\'un autre contrat ou sans enveloppe est ig
   fake.replyTo('contexte', { langue: 'fr' });
   await link.ready;
   assert.equal(link.language(), 'fr');
+});
+
+// Les envois vont à '*' tant que GFS n'a rien dit ; ensuite à l'origine que le navigateur donne à son premier message valide (le cadre de l'app, lui, est d'origine opaque).
+test('l\'origine de GFS est retenue au premier message valide : la demande de contexte part à « * », les envois suivants à cette origine', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 1000 });
+  assert.equal(fake.sent[0].origin, '*');
+  fake.deliver({ gfs: 0, type: 'reponse', id: fake.calls('contexte')[0].id, data: { langue: 'fr' } }, fake.host.parent, 'https://gfs.example');
+  await link.ready;
+  link.hideBar(true);
+  assert.equal(fake.sent.at(-1).message.nom, 'barre.masquer');
+  assert.equal(fake.sent.at(-1).origin, 'https://gfs.example');
+});
+
+test('l\'origine de GFS n\'est pas retenue sur un message qu\'on ignore, ni quand elle est opaque ou sans hôte, et la première retenue reste', async () => {
+  const fake = gfs();
+  const link = createGfsLink({ host: fake.host, timeoutMs: 1000 });
+  const id = fake.calls('contexte')[0].id;
+  fake.deliver({ gfs: 0, type: 'reponse', id, data: { langue: 'en' } }, { postMessage() {} }, 'https://autre.example');   // un autre cadre
+  fake.deliver({ gfs: 1, type: 'reponse', id, data: { langue: 'en' } }, fake.host.parent, 'https://mauvais-contrat.example');   // un autre contrat
+  fake.deliver({ gfs: 0, type: 'evenement', nom: 'langue', data: { langue: 'en' } }, fake.host.parent, 'null');   // origine opaque
+  fake.deliver({ gfs: 0, type: 'evenement', nom: 'langue', data: { langue: 'fr' } }, fake.host.parent, 'https://gfs.example/avec/chemin');   // pas une origine
+  fake.deliver({ gfs: 0, type: 'evenement', nom: 'langue', data: { langue: 'en' } }, fake.host.parent);   // le navigateur ne la dit pas
+  link.hideBar(true);
+  assert.equal(fake.sent.at(-1).origin, '*');
+  fake.deliver({ gfs: 0, type: 'evenement', nom: 'langue', data: { langue: 'fr' } }, fake.host.parent, 'https://gfs.example');
+  fake.deliver({ gfs: 0, type: 'evenement', nom: 'langue', data: { langue: 'en' } }, fake.host.parent, 'https://autre-origine.example');
+  link.hideBar(false);
+  assert.equal(fake.sent.at(-1).origin, 'https://gfs.example');
 });
 
 test('événements : chaque abonné une fois par vrai changement, avec sa copie ; un événement inconnu est ignoré', async () => {
