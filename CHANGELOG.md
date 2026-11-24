@@ -2,6 +2,14 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.28.0 : le moteur de partage 5.1.0, repris de Sync+ (24/11/2026)
+
+Sync+ a livré le 19/11 le moteur **5.1.0** (syncPlus 0.30.8, commit `e1f06ad`) : la copie du kit passe de 5.0.5 à **5.1.0**. Le port (`PORT_SHAPE`), les noms de tables, `CODE_FORMAT` (2) et le texte des formules de `Synchro` ne changent pas ; un hôte n'a rien à changer pour continuer à marcher.
+
+- **Un journal renommé n'est plus pris pour un journal supprimé.** Renommer la table `Journal_<export>` chez la CIBLE casse l'envoi (le webhook de la SOURCE vise l'ancien nom, « Table not found ») et les deux écrans disaient « supprimé ». `lostReceptions(schema, shares, onTable)` rend de plus `renamedTo` (le journal existe encore sous un autre nom, retrouvé par la table du formulaire de la réception) et `recognized` (son nom commence encore par le préfixe des journaux) ; `markReceptions` ne réécrit plus la marque d'un journal renommé ; `hookJournal(h)` lit dans l'adresse du webhook le journal visé ; `autoPauseKind` rend `'journal'` (et non plus `'link'`) pour « Table not found », donc la note SOURCE d'une pause d'office porte `why: 'journal'`.
+- **Pour un hôte** : un hôte qui ne connaît que `'link'` et `'slow'` montre son texte général pour `why: 'journal'` ; un hôte qui montrait la carte « Réception supprimée » en montre une « Journal renommé » quand `renamedTo` n'est pas vide (sans bouton : retirer l'avis effacerait le lien). Le code d'hôte de GFS (`js/sharing/`) n'appelle aucune de ces fonctions.
+- **Essais** : `test/synchro-moteur-lost.test.mjs` reprend les cas du renommage (repris de Sync+ par `outils/reprendre-synchro.mjs`). **`KIT_VERSION`** (`js/violations-message.js`) suit le numéro de la version.
+
 ## 0.27.0 : le lien se fie à GFS plus finement, et se lit mieux à l'audit (19/11/2026)
 
 Demande du porteur de GFS (19/11) : l'outil d'audit `gw-audit` faisait perdre jusqu'à 9 points de note aux apps qui embarquent le kit (Automation+ 81 contre 90 sans lui) par deux constats « majeur » dans `js/gfs-link.js`. Étude et mesures : `audits/gw-audit-kit-2026-11-19/` du projet de GFS. Rien ne change pour une app : aucune fonction ajoutée ni retirée, le contrat 5 est le même.
