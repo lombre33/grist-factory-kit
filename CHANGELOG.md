@@ -2,6 +2,19 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.29.0 : la fenêtre commune de mise à jour des noms (25/11/2026)
+
+Demande du porteur de GFS (25/11) : toutes les apps passent à des noms de tables et de colonnes **anglais**, sans perdre un document, et la personne en est prévenue par **une fenêtre commune**, bloquante, qui ne s'ouvre que pour qui a les droits et dit que c'est l'affaire de quelques secondes. Module facultatif : une app qui n'en veut pas ne le charge pas ; rien ne change pour les autres (aucun fichier existant n'est modifié, hors `KIT_VERSION`). Mesures et cas : `audits/noms-anglais-2026-11-25/` du projet de GFS.
+
+- **`js/names-update/`** : `NamesUpdate.run({ port, plan, appName })`. L'app donne son lot de renommage (`plan(schema)`) et un port (`readSchema`, `isOwner`, `readOnly`, `apply`, `rowCount`) ; le kit décide s'il y a quelque chose à faire, si cette personne peut le faire, montre la fenêtre, envoie **un seul lot** (atomique), relit les noms et compte les lignes avant et après. États rendus : `none`, `wait`, `blocked`, `done`, `already`, `skipped`.
+- **Une table que Sync+ utilise n'est jamais renommée**, ni ses colonnes (une table qui porte la colonne `id_sync`) : le lien casserait en silence (table renommée : le lot ne voit plus rien ; colonne renommée : le lot envoie des cellules vides à la cible). La fenêtre le dit, `outcome.held` aussi, et le renommage reprendra quand le partage sera retiré.
+- **Un nom d'arrivée déjà pris bloque la mise à jour** : Grist ne le refuse pas, il renomme en `Nom2` et répond 200 (mesuré). Le kit relit les noms juste avant d'envoyer, rejoue le lot sur le schéma, et ne prend jamais un nom suffixé pour une réussite.
+- **Chaque panne a son texte** : lot refusé (rien n'a changé : Réessayer ou Continuer sans mettre à jour), réponse perdue (les noms relus disent si le lot est passé), pas de réponse en 60 s (« pas encore connu » : Vérifier), autre onglet passé avant (« C'est déjà fait »).
+- **Qui la voit** : la preuve de propriété vient de l'app (dans GFS, `contexte.role.proprietaire` ; seule, `isOwner` du moteur de partage). Non prouvé, lecture seule ou schéma illisible : pas de fenêtre, l'app continue sur les noms d'avant (elle lit les deux jeux) et la mise à jour se fera à l'ouverture d'un propriétaire.
+- **Interface** : la base des fenêtres du kit, 700 × 400 sans défiler pour l'essentiel, la liste des noms sous un titre qu'on ouvre au clavier, jetons seulement, 4,5:1 mesuré en clair et en sombre, français (vouvoiement) et anglais. Pas de « Annuler » ni d'Échap avant la fin ; après un refus, Échap vaut « Continuer sans mettre à jour ».
+- **Essais** : `test/names-update-plan.test.mjs`, `names-update-run.test.mjs` (contre `test/names-update-fake.mjs`, qui se comporte comme le vrai Grist : lot atomique, nom pris = suffixe), `names-update-strings.test.mjs` ; dans le navigateur `navigateur/noms.html` et `scenarios-noms.mjs` (266 vérifications). **`KIT_VERSION`** suit le numéro de la version ; `navigateur/aide.mjs` sert aussi les fichiers `.mjs`.
+- **Pour une app** : charger `css/names-update.css` ; appeler `NamesUpdate.run` au démarrage, avant de lire ses tables par leurs noms anglais ; déclarer la capacité `renommage` dans sa fiche (le courtier de GFS ne laisse renommer que les tables de l'app, par un lot de cette fenêtre) ; ne jamais renommer en silence.
+
 ## 0.28.0 : le moteur de partage 5.1.0, repris de Sync+ (24/11/2026)
 
 Sync+ a livré le 19/11 le moteur **5.1.0** (syncPlus 0.30.8, commit `e1f06ad`) : la copie du kit passe de 5.0.5 à **5.1.0**. Le port (`PORT_SHAPE`), les noms de tables, `CODE_FORMAT` (2) et le texte des formules de `Synchro` ne changent pas ; un hôte n'a rien à changer pour continuer à marcher.

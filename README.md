@@ -240,6 +240,25 @@ startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le mêm
 - **Les essais** (`test/synchro-*.test.mjs`, 28 fichiers) sont ceux de Sync+ pour son moteur (sauf les trois qui lisent un de ses écrans), dont un passage complet sur un Grist en mémoire (`test/synchro-fake.mjs`) ; `test/synchro-i18n.mjs` tient la place de son `format` de textes.
 - **Mettre à jour la copie** : `node outils/reprendre-synchro.mjs <dépôt de Sync+>`, puis les essais, puis une ligne au journal. Seul GFS le fait ; les corrections qu'il y apporte, il les dit à Sync+ (sa page d'état), qui reprend la version du kit.
 
+## La mise à jour des noms (module facultatif)
+
+Une app qui change les noms de ses tables ou de ses colonnes (le passage à l'anglais, par exemple) ne les renomme **jamais en silence** : elle passe par la fenêtre commune, qui dit à la personne ce qui change (les données non, seulement les noms), vérifie avant et après, et ne s'ouvre que pour qui peut la faire. Décidé par le porteur de GFS le 25/11 : fenêtre **commune**, **bloquante**, **seulement pour qui a les droits**, qui dit que c'est l'affaire de quelques secondes.
+
+```js
+import { NamesUpdate } from './kit/js/names-update/index.js';   // et css/names-update.css, après tokens.css et windows.css
+
+const outcome = await NamesUpdate.run({ port, plan, appName: 'Publipostage+' });
+// outcome.state : none · wait · blocked · done · already · skipped ; outcome.held : les tables gardées (Sync+)
+```
+
+- **`plan(schema)`** : le lot de renommage de l'app (`RenameTable`, `RenameColumn`, et `ModifyColumn` du libellé seul), calculé d'après les noms que le document a **maintenant** (`schema = { tables: { '<table>': ['<colonne>', …] }, shared?: […] }`), `null` ou vide quand il n'y a rien à faire. Le kit le recalcule juste avant d'envoyer : un autre onglet a pu passer avant.
+- **`port`** : `readSchema()`, `isOwner()` (`true`, `false` ou `null` : seul `true` ouvre la fenêtre ; dans GFS, `contexte.role.proprietaire` ; seule, l'app le prouve par `isOwner` du moteur de partage), `readOnly()` (facultatif), `apply(actions)` (UN lot, atomique : une promesse rejetée veut dire que rien n'est passé), `rowCount(table)` (facultatif : les lignes comptées avant et après, « N lignes vérifiées »).
+- **Les états** : `none` (rien à renommer), `wait` (il y a à faire mais cette personne ne peut pas : pas de fenêtre, l'app continue sur les noms d'avant), `blocked` (un nom d'arrivée est déjà pris, ou une source manque : pas de fenêtre ; Grist **ne refuse pas** un nom pris, il ajoute « 2 », d'où cette garde), `done`, `already` (un autre onglet est passé avant), `skipped` (refus, puis « Continuer sans mettre à jour »).
+- **Sync+ n'est jamais cassé** : une table qui porte la colonne `id_sync` (celle que Sync+ pose sur toute table qu'il envoie ou reçoit) ne change ni de nom ni de colonnes, que le lot la nomme par l'ancien nom ou le nouveau ; la fenêtre le dit (« Une table garde son ancien nom (un partage Sync+ s'en sert) »), `outcome.held` aussi. Renommée, une table rend le lien muet et une colonne le fait envoyer des cellules vides (mesuré dans un vrai Grist, faits vérifiés de GFS, 160).
+- **Chaque fin a son texte** : terminé, refusé (« Rien n'a changé dans vos données » ; Réessayer ou Continuer sans mettre à jour), déjà fait, nom pris, pas de réponse dans les 60 s (le résultat n'est « pas encore connu » : Vérifier relit les noms, jamais « terminé » sans les avoir relus). Un nom que Grist a suffixé en « 2 » entre-temps est reconnu et jamais pris pour une réussite.
+- **Le noyau sans fenêtre** : `js/names-update/plan.js` (ce que Sync+ garde, la rejouer sur le schéma, la preuve que le lot est passé) et `run.js` (`prepare`, `execute`) ne touchent ni au document ni à la page ; ils se testent seuls (`test/names-update-*.test.mjs`, contre `test/names-update-fake.mjs`, un document qui se comporte comme le vrai Grist) ; la fenêtre est dans `window.js`, ses textes dans `strings.js` (clés `kit.names.*`, français et anglais).
+- **Les essais du navigateur** : `navigateur/noms.html` et `scenarios-noms.mjs` (700 × 400, souris et clavier, clair et sombre, français et anglais) : la fenêtre bloquante, la liste qui s'ouvre au clavier, le bandeau Sync+, le refus, la lenteur, un autre onglet, un nom pris, aucune réponse, et ceux qui ne voient rien.
+
 ## Les bibliothèques d'une app : la liste unique et son outil
 
 Une app ne garde plus ses bibliothèques à cinq endroits (la carte d'importation, la politique de sécurité, les empreintes écrites dans ses fichiers, le miroir des essais, la liste du miroir) : une seule liste, le **`package.json` à la racine de l'app** (versions exactes, et une section `gfs`), et un outil qui en tire le reste. Seule règle : une version ne s'écrit qu'une fois, dans `dependencies`.
@@ -293,6 +312,10 @@ Ce que l'outil ne fait pas encore : les fichiers assemblés des extensions (ils 
 | `js/calendrier/lien-kit.js` | Le seul fichier du calendrier qui importe le reste du kit : `h` et `createI18n`. |
 | `js/synchro/index.js` | `startEngine({ port, prefix })`, `ENGINE_VERSION`, `PORT_SHAPE`, `TABLE_PREFIX_RULE` : le moteur de partage entre documents (ci-dessus). Ses dossiers : `logic/` (la décision, sans effet), `source/` et `target/` (l'envoi et la réception), `acl.js`, `pages.js`, `exchange.js`, `form-link.js`, `errors.js`. |
 | `js/synchro/textes.js` | `TEXTES` : les textes `error.*`, `diag.*` et `recv.*` que le moteur demande à son hôte, en français et en anglais. |
+| `css/names-update.css` | La fenêtre de mise à jour des noms : des jetons seulement. À charger après `tokens.css` et `windows.css`. |
+| `js/names-update/index.js` | `NamesUpdate.run({ port, plan, appName })` : la mise à jour des noms (ci-dessus) ; `prepare`, `execute`, et le noyau (`syncTables`, `keepOut`, `summarize`, `check`, `applied`) pour qui n'en veut pas la fenêtre. |
+| `js/names-update/plan.js`, `run.js` | Le noyau sans fenêtre : ce que Sync+ garde, le lot rejoué sur le schéma, la preuve qu'il est passé ; `prepare` (qui peut, quoi) et `execute` (relire, envoyer un lot, vérifier). |
+| `js/names-update/window.js`, `strings.js` | La fenêtre bloquante (base du kit) et ses textes `kit.names.*` ; ajoutés aux textes du kit au chargement de la fenêtre. |
 | `outils/bibliotheques.mjs` | L'outil des bibliothèques d'une app (ci-dessus) ; `outils/bibliotheques/` : `app.mjs` (la liste, le catalogue, la politique), `carte.mjs` (la carte d'importation), `empreintes.mjs` (les empreintes du code), `miroir.mjs` (le miroir des essais), `copies.mjs` (la copie figée d'une fonction, rangée dans l'app), `primitives.mjs` (l'empreinte, un fichier de paquet, la comparaison au CDN, que l'outil de GFS reprend). Un outil de développement : aucune page ne le charge. |
 | `js/host.js` | `hostContract(search)` : le contrat de GFS dans l'adresse du cadre (`gfs=<n>`), ou null seule. |
 | `js/once.js` | Garde interne : un module du kit chargé par deux adresses est signalé dans la console. |
@@ -323,7 +346,7 @@ npm run test:navigateur     # Chromium (Playwright), 700 × 400, souris et clavi
 KIT_ONLY=couleur npm run test:navigateur   # seulement les essais dont le nom contient « couleur » (ou « calendrier »)
 ```
 
-Les essais du navigateur ouvrent `navigateur/page.html`, pour le sélecteur de couleur `navigateur/couleur.html`, pour le calendrier `navigateur/calendrier.html` et pour le lien avec GFS `navigateur/gfs-hote.html` (le cadre de l'app isolé comme chez GFS), sous la politique de sécurité d'une app hébergée et rangent leurs captures dans `navigateur/captures/` (ou `KIT_CAPTURES`). Playwright est celui du dossier du dépôt (`npm i -D playwright`) ou, à défaut, celui du conteneur du cloud.
+Les essais du navigateur ouvrent `navigateur/page.html`, pour le sélecteur de couleur `navigateur/couleur.html`, pour le calendrier `navigateur/calendrier.html`, pour la mise à jour des noms `navigateur/noms.html` et pour le lien avec GFS `navigateur/gfs-hote.html` (le cadre de l'app isolé comme chez GFS), sous la politique de sécurité d'une app hébergée et rangent leurs captures dans `navigateur/captures/` (ou `KIT_CAPTURES`). Playwright est celui du dossier du dépôt (`npm i -D playwright`) ou, à défaut, celui du conteneur du cloud.
 
 Le kit tient les seuils de code de l'outil d'audit des widgets (`gwaudit`) : 600 lignes de code par fichier au plus, moins de 81 lignes par fonction, complexité 15 au plus. L'outil juge la surface qu'exécute `navigateur/page.html` ; pour le reste de `js/` (le calendrier, par exemple), la mesure par fonction de l'outil (`src/moteur/fonctions.js`) est passée sur tout `js/` : 496 fonctions, aucune au-dessus des seuils.
 

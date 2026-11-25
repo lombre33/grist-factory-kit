@@ -1,0 +1,20 @@
+/* La fenêtre de mise à jour des noms (js/names-update/window.js), sur la base commune des fenêtres (css/windows.css). À charger après css/tokens.css et css/windows.css. Tout est en
+   jetons de la charte : rien en dur, clair et sombre. Dans le panneau de 700 × 400 de Grist, le contenu défile et le titre comme le bouton restent visibles. */
+#nu-modal { z-index: var(--z-dialog); }
+.nu-box { --pp-modal-title-gap: 8px; --pp-modal-actions-gap: 14px; }
+.nu-body { padding-bottom: 2px; }
+.nu-text { margin: 0 0 8px; font-size: 12.5px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+.nu-strong { font-weight: 700; }
+.nu-muted { color: var(--text-muted); font-size: 12px; }
+.nu-ok { font-weight: 700; color: var(--good); }
+.nu-alert { color: var(--danger-ink); }
+.nu-held { padding: 8px 10px; border: 1px solid var(--accent-soft-border); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.nu-pairs { margin: 0 0 10px; padding: 0; list-style: none; font-size: 12px; color: var(--text); }
+.nu-pairs li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; padding: 2px 0; }
+.nu-pairs code { padding: 1px 5px; border-radius: 4px; background: var(--surface-sunken); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; overflow-wrap: anywhere; }
+.nu-becomes, .nu-more { color: var(--text-muted); }
+/* Le titre qu'on ouvre : la liste des noms. Un vrai contrôle au clavier (liseré de focus), en --accent-ink (4,5:1 sur --surface dans les deux thèmes). */
+.nu-details { margin: 0 0 8px; }
+.nu-details summary { display: inline-block; padding: 2px 0; font-size: 12.5px; font-weight: 600; color: var(--accent-ink); cursor: pointer; }
+.nu-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.nu-details .nu-pairs { margin: 6px 0 0; }

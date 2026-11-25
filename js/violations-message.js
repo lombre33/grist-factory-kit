@@ -7,7 +7,7 @@ import { once } from './once.js';
 once('violations-message', import.meta.url);
 
 // La version du kit, dite à GFS quand l'app active le relais : il l'affiche à côté de « relais actif ». Un essai la garde égale à celle de `package.json`.
-export const KIT_VERSION = '0.28.0';
+export const KIT_VERSION = '0.29.0';
 
 // Les directives dont GFS accepte le nom ; tout autre vaut « autre ».
 export const DIRECTIVES = Object.freeze(['default-src', 'script-src', 'script-src-elem', 'script-src-attr', 'style-src', 'style-src-elem', 'style-src-attr', 'img-src', 'font-src',

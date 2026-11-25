@@ -10,6 +10,7 @@ import { gfsLink } from './scenarios-gfs.mjs';
 import { colorPalette, colorDialog } from './scenarios-couleur.mjs';
 import { gestes } from './scenarios-calendrier-gestes.mjs';
 import { rendu } from './scenarios-calendrier-rendu.mjs';
+import { namesUpdate } from './scenarios-noms.mjs';
 
 const shots = process.env.KIT_CAPTURES || join(ROOT, 'navigateur', 'captures');
 await mkdir(shots, { recursive: true });
@@ -40,6 +41,7 @@ for (const system of ['light', 'dark']) {
     await run(`menu de couleur (${system}, ${locale})`, () => colorPalette(env, system, locale));
     await run(`fenêtre de couleur (${system}, ${locale})`, () => colorDialog(env, system, locale));
     await run(`calendrier : rendu (${system}, ${locale})`, () => rendu(env, system, locale));
+    await run(`mise à jour des noms (${system}, ${locale})`, () => namesUpdate(env, system, locale));
   }
   await run(`fenêtre libre (${system})`, () => ownWindow(env, system));
   await run(`couches (${system})`, () => layers(env, system));

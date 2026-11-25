@@ -22,7 +22,7 @@ export function check(label, ok, detail = '') {
   if (!ok) process.exitCode = 1;
 }
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png' };
 
 // Sert le dépôt tel quel, sans cache. Comme GitHub Pages, ni fichier ni dossier dont le nom commence par « _ » ou « . », et l'en-tête CORS ouvert : un module chargé par le cadre
 // isolé d'une app (origine opaque) ne passe pas sans lui.
