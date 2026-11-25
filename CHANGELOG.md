@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.31.0 : le secours d'un CDN, c'est la copie de GFS (25/11/2026)
+
+Choix du porteur de GFS (25/11, « oui très bien, la copie figée en back-up ») : quand le CDN d'une bibliothèque échoue ou tarde, l'app charge **la copie de GFS**, jamais un deuxième CDN. Mesuré sous Firefox 160 (faits vérifiés 163 et 170 de GFS) : l'événement `error` d'une balise est le même pour un hôte mort, des octets refusés par l'empreinte et une adresse que la politique ne nomme pas ; un hôte muet ne lève rien.
+
+- **`GfsLink.secours(id, version?)`** : lit le champ `secours` du contexte et de l'événement `extensions` (`{ id: { version, src, integrite, forme } }`, contrats de GFS 5.2, point 14), pour les extensions et pour les bibliothèques natives restées au CDN. `null` quand GFS n'en dit rien (un GFS d'avant, une bibliothèque déjà servie par la copie, une version que le catalogue n'a pas) ; `version` écarte une copie d'une autre version. Un secours qui change seul n'appelle pas `onExtensions` : l'app n'a rien de nouveau à charger.
+- **`loadScript(lib, { secours, delai, doc })`** (`js/script-loader.js`, une trentaine de lignes) : charge par le CDN, puis par la copie sur erreur ou après `delai` (3 s). Sans `secours`, ni minuterie ni changement. Un `forme: 'module'` se charge en module ; `integrity` vaut `integrite`.
+- **Rien à changer** pour une app qui ne l'adopte pas : le champ est additif, `bibliotheques` et `natives` sont identiques.
+- **Essais** : `test/script-loader.test.mjs` (le CDN charge, échoue, ne répond pas ; sans secours ; le secours échoue aussi ; module ; sans empreinte), `test/gfs-link.test.mjs` (`secours`). **`KIT_VERSION`** suit.
+
 ## 0.30.0 : une copie figée peut être le seul mode d'une fonction : plus de carte de CDN, plus de script de choix (25/11/2026)
 
 Choix du porteur de GFS (25/11) : l'éditeur de Publipostage+ ne se charge plus depuis esm.sh. Mesuré (faits vérifiés 167 et 168 de GFS) : esm.sh et le `+esm` de jsDelivr ne rendent pas les octets de npm, et le `+esm` charge jusqu'à sept copies de ProseMirror. La fonction n'a plus de CDN en attendant que GFS serve la copie figée par jsDelivr (une 0.31.0).

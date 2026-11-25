@@ -221,6 +221,29 @@ test('natives : la copie figée choisie, avec sa version ; une entrée mal form�
   assert.equal(link.native('docx'), null);
 });
 
+test('secours : la copie de GFS de ce qui se charge par un CDN, pour la version attendue ; sans bruit quand seul le secours change (5.2, point 14)', async () => {
+  const plotly = { version: '2.13.2', src: 'https://gfs.example/vendor/plotly.js', integrite: 'sha384-p', forme: 'script' };
+  const docx = { version: '9.15.1', src: 'https://gfs.example/vendor/docx.js', integrite: 'sha384-d' };
+  const { fake, link } = await hosted({ ...CONTEXT, secours: { plotly, docx, 'Pas-Un-Id': plotly, sansSrc: { version: '1', integrite: 'sha384-x' } } });
+  assert.deepEqual(link.secours('plotly'), plotly);
+  assert.deepEqual(link.secours('docx'), { ...docx, forme: 'script' }, 'sans `forme`, un script classique');
+  assert.deepEqual(link.secours('plotly', '2.13.2'), plotly, 'la version attendue est la bonne');
+  assert.equal(link.secours('plotly', '2.13.3'), null, 'une copie d\'une autre version ne vaut pas la bibliothèque qu\'attend le code');
+  assert.deepEqual(['Pas-Un-Id', 'sansSrc', 'jamais-vu'].map(id => link.secours(id)), [null, null, null]);
+  link.secours('plotly').src = 'https://autre.example/x.js';
+  assert.equal(link.secours('plotly').src, plotly.src, 'ce que le lien rend est une copie');
+  const seen = [];
+  link.onExtensions(value => seen.push(value));
+  const event = data => fake.deliver({ gfs: 0, type: 'evenement', nom: 'extensions', data });
+  event({ extensions: ['edition'], bibliotheques: CONTEXT.bibliotheques, secours: { plotly } });
+  assert.equal(link.secours('docx'), null, 'un secours de moins est pris en compte tout de suite');
+  assert.equal(seen.length, 0, 'mais l\'app n\'a rien de nouveau à charger : pas d\'événement');
+  event({ extensions: ['edition'], bibliotheques: CONTEXT.bibliotheques });
+  assert.equal(link.secours('plotly'), null, 'un GFS qui ne parle plus de `secours` (ou d\'avant) : l\'app n\'a que son CDN');
+  const before = await hosted({ ...CONTEXT });
+  assert.equal(before.link.secours('plotly'), null, 'un GFS d\'avant le secours ne donne rien : le CDN seul, comme avant');
+});
+
 test('copies : les fonctions dont la copie figée est rangée dans l\'app, lues dans l\'adresse du cadre tout de suite (5.2, point 12)', async () => {
   const at = search => createGfsLink({ host: gfs({ search }).host, timeoutMs: 50 });
   assert.deepEqual(at('?gfs=0&copie=editeur').copies(), ['editeur'], 'lu sans rien demander : avant même la réponse de GFS');

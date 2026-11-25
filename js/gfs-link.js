@@ -14,7 +14,7 @@
 //   GfsLink.ambiance(), GfsLink.onAmbiance(fn)   // l'ambiance et la couleur que la personne a choisies pour GFS et ses apps (js/ambiance-message.js), ou null : rien n'est choisi (5.2 point 10) ; js/ambiance.js la pose
 //   GfsLink.correcteurs(), GfsLink.onCorrecteurs(fn)   // { coupes } : la personne a coupé les correcteurs du navigateur (LanguageTool) dans les apps par le bouton de la barre de GFS (5.2 point 13) ; js/correcteurs.js pose la marque
 //   GfsLink.storageGet(clé), GfsLink.storageSet(clé, texte | null)   // les choix de la personne : chez GFS (le cadre n'a pas de stockage à lui, 5.3), dans le navigateur seule
-//   GfsLink.extensions(), GfsLink.library(id), GfsLink.onExtensions(fn), GfsLink.install(id)   // les extensions actives, la source de leurs bibliothèques (5.2 point 4, 5.4)
+//   GfsLink.extensions(), GfsLink.library(id), GfsLink.secours(id, version), GfsLink.onExtensions(fn), GfsLink.install(id)   // les extensions actives, la source de leurs bibliothèques (5.2 point 4, 5.4)
 //   GfsLink.copies()                             // les fonctions dont la copie figée est rangée dans l'app (`copie=` dans l'adresse du cadre, lue tout de suite) : l'éditeur ; [] seule ou sans choix (5.2 point 12)
 //   GfsLink.native(id)                           // { version, src, integrite, forme } : la copie figée que GFS sert pour une bibliothèque native de l'app (choix de la personne), ou null : le CDN de l'app (5.2 point 12)
 //   GfsLink.choose({ types, apps?, titre? })     // la personne désigne un fichier d'une autre app dans l'explorateur de GFS : { app, id, nom, type }, ou null si elle annule (5.4, point 2)
@@ -143,6 +143,8 @@ function normalizeLibraries(raw) {
   return found;
 }
 
+// `secours` (5.2, point 14) : pour chaque bibliothèque que l'app charge par un CDN (celui de ses extensions, celui de son propre code), la copie de GFS, { version, src, integrite, forme } ; une
+// bibliothèque déjà servie par la copie n'y est pas. Même forme que `natives` : la lecture en est partagée.
 // `natives` (5.2, point 12) : pour chaque bibliothèque native de l'app que la personne a mise en copie figée, { version, src, integrite, forme } ; les autres n'y sont pas (le CDN de l'app vaut).
 // L'app compare `version` à celle de sa liste avant d'en prendre l'adresse : une copie d'une autre version ne vaut pas la sienne.
 function normalizeNatives(raw) {
@@ -199,6 +201,7 @@ function setExtensions(link, data) {
   const extensions = normalizeExtensions(data.extensions);
   const libraries = normalizeLibraries(data.bibliotheques);
   const natives = normalizeNatives(data.natives);
+  link.secours = normalizeNatives(data.secours); // gardé sans bruit : un secours qui change seul n'est pas un changement de ce que l'app charge
   if (same([extensions, [...libraries], [...natives]], [link.extensions, [...link.libraries], [...link.natives]])) return;
   link.extensions = extensions;
   link.libraries = libraries;
@@ -512,7 +515,7 @@ function newLink(host) {
   const contract = framed ? hostContract(host.location && host.location.search) : null;
   return {
     host, contract, hosted: contract !== null, hostOrigin: null, known: false, nextId: 1,
-    context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, correcteurs: normalizeCorrecteurs(null), storage: null, extensions: [], libraries: new Map(), natives: new Map(),
+    context: null, opening: null, language: null, bar: null, identity: null, ambiance: null, correcteurs: normalizeCorrecteurs(null), storage: null, extensions: [], libraries: new Map(), natives: new Map(), secours: new Map(),
     listeners: { language: new Set(), bar: new Set(), identity: new Set(), ambiance: new Set(), correcteurs: new Set(), extensions: new Set() },
     pending: new Map(), installing: new Map(), linking: new Map(), openHandler: null, earlyOpens: [], closeHandler: null, stayHandler: null, deleteHandler: null, copyHandler: null,
   };
@@ -545,6 +548,8 @@ export function createGfsLink({ host = globalThis.window, timeoutMs = CONTEXT_TI
     extensions: () => link.extensions.slice(),
     library: id => copy(link.libraries.get(id)),
     native: id => copy(link.natives.get(id)),
+    // la copie de GFS à essayer quand le CDN échoue ou tarde ; `version` (celle que l'app attend) écarte une copie d'une autre version (5.2, point 14)
+    secours: (id, version) => { const spare = link.secours.get(id); return spare && (version === undefined || spare.version === version) ? copy(spare) : null; },
     copies: () => (link.hosted ? hostCopies(host.location && host.location.search) : []),
     tell: (name, args) => tell(link, String(name), args),
     storageGet: key => storageGet(link, key),
