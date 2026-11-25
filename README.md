@@ -242,6 +242,8 @@ startEngine({ port, prefix: 'GFS_' });   // une fois, avant tout appel ; le mêm
 
 ## La mise à jour des noms (module facultatif)
 
+**Une app nouvelle n'en a pas besoin : elle est en anglais dès le départ** (décision du porteur de GFS, 25/11) : son code (variables, fonctions, fichiers), ses tables et leurs colonnes (`Tuesday_Projects`, `Name`, `ModifiedAt`) ; seule l'interface reste en français et en anglais. Le kit, ses textes de code et ses noms de tables sont déjà ainsi ; ce qui suit est pour une app **déjà sortie** dont les noms sont encore en français.
+
 Une app qui change les noms de ses tables ou de ses colonnes (le passage à l'anglais, par exemple) ne les renomme **jamais en silence** : elle passe par la fenêtre commune, qui dit à la personne ce qui change (les données non, seulement les noms), vérifie avant et après, et ne s'ouvre que pour qui peut la faire. Décidé par le porteur de GFS le 25/11 : fenêtre **commune**, **bloquante**, **seulement pour qui a les droits**, qui dit que c'est l'affaire de quelques secondes.
 
 ```js
