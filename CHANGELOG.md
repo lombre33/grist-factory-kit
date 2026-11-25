@@ -2,6 +2,14 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.29.1 : la fenêtre de mise à jour des noms se tient seule (25/11/2026)
+
+Mesuré dans le labo de GFS avec la **vraie Publipostage+** (qui habille ses fenêtres à sa façon : son cadre est un `.modal-content`, ses boutons ceux de `.var-modal-actions`, et elle ne charge pas `css/windows.css`) : la fenêtre de la 0.29.0 s'ouvrait, mais **sans fond ni bouton** (le texte flottait sur la page de l'app) et **sous la barre repliable** de l'app (`z-index: var(--z-dialog)` : ce jeton n'existe pas dans la page de l'app, la déclaration est annulée, le niveau vaut `auto`). Les essais du kit n'avaient rien vu : leur page charge `windows.css`.
+
+- **`css/names-update.css`** : le cadre (`.nu-box` : fond, coins, ombre, police) et les boutons (`.nu-box .pp-modal-actions button` : mêmes valeurs que `windows.css`) sont posés par la feuille elle-même ; `#nu-modal { z-index: var(--z-dialog, 2100) }` a un repli. La mise en page (voile, titre, contenu, boutons) reste celle de la base commune `.pp-modal…`, que toutes les apps ont sous ces noms.
+- **Essai** : `test/names-update-css.test.mjs` (jetons de la charte seulement, repli numérique de 2000 au moins, fond du cadre et du bouton principal). La mesure du rendu est celle du labo de GFS (`prototype/labo/run-noms-fenetre.mjs` : fond plein, jetons présents dans la page de l'app, niveau numérique au-dessus de tout ce que la page empile) : les deux vérifications échouent sur la 0.29.0 et passent sur la 0.29.1.
+- Rien d'autre ne change : pas de fonction ajoutée ni retirée. **`KIT_VERSION`** suit.
+
 ## 0.29.0 : la fenêtre commune de mise à jour des noms (25/11/2026)
 
 Demande du porteur de GFS (25/11) : toutes les apps passent à des noms de tables et de colonnes **anglais**, sans perdre un document, et la personne en est prévenue par **une fenêtre commune**, bloquante, qui ne s'ouvre que pour qui a les droits et dit que c'est l'affaire de quelques secondes. Module facultatif : une app qui n'en veut pas ne le charge pas ; rien ne change pour les autres (aucun fichier existant n'est modifié, hors `KIT_VERSION`). Mesures et cas : `audits/noms-anglais-2026-11-25/` du projet de GFS.

@@ -1,7 +1,6 @@
 /* La fenêtre de mise à jour des noms (js/names-update/window.js), sur la base commune des fenêtres (css/windows.css). À charger après css/tokens.css et css/windows.css. Tout est en
    jetons de la charte : rien en dur, clair et sombre. Dans le panneau de 700 × 400 de Grist, le contenu défile et le titre comme le bouton restent visibles. */
-#nu-modal { z-index: var(--z-dialog); }
-.nu-box { --pp-modal-title-gap: 8px; --pp-modal-actions-gap: 14px; }
+#nu-modal { z-index: var(--z-dialog, 2100); }
 .nu-body { padding-bottom: 2px; }
 .nu-text { margin: 0 0 8px; font-size: 12.5px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
 .nu-strong { font-weight: 700; }
@@ -18,3 +17,16 @@
 .nu-details summary { display: inline-block; padding: 2px 0; font-size: 12.5px; font-weight: 600; color: var(--accent-ink); cursor: pointer; }
 .nu-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .nu-details .nu-pairs { margin: 6px 0 0; }
+
+/* Le cadre et le bouton se tiennent seuls. Une app qui habille ses fenêtres à sa façon (Publipostage+ : le cadre est un `.modal-content`, les boutons ceux de `.var-modal-actions`) ne
+   charge pas css/windows.css : sans ces règles le texte flotterait sur la page, sans fond ni bouton (vu dans le labo de GFS, avec la vraie Publipostage+). Mêmes valeurs que windows.css ;
+   la mise en page (voile, titre, contenu, boutons : `.pp-modal…`) reste celle de la base commune, que toutes les apps ont sous ces noms. */
+.nu-box { --pp-modal-title-gap: 8px; --pp-modal-actions-gap: 14px; background: var(--surface); color: var(--text); border-radius: 8px; box-shadow: var(--shadow-float); font-family: var(--font-ui); }
+.nu-box .pp-modal-actions button { height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-family: var(--font-ui); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.nu-box .pp-modal-actions button:hover { background: var(--surface-sunken); }
+.nu-box .pp-modal-actions button.pp-modal-primary { border-color: var(--accent-solid); background: var(--accent-solid); color: var(--on-accent); }
+.nu-box .pp-modal-actions button.pp-modal-primary:hover { background: var(--accent-solid-hover); }
+.nu-box .pp-modal-actions button:disabled { opacity: .45; cursor: default; }
+.nu-box .pp-modal-actions button[hidden] { display: none; }
+.nu-box .pp-modal-actions .pp-modal-spacer { flex: 1; }
+.nu-box :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
