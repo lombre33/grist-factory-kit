@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { bootstrapText, buildCopy, checkCopyFolder, checkMapBlock, copyMapText, mapBlock, packagesRead, readCopy, rewriteMapBlock } from '../outils/bibliotheques/copies.mjs';
+import { bootstrapText, buildCopy, checkCopyFolder, checkCopyOnly, checkMapBlock, copyMapText, copyOnlyElement, mapBlock, packagesRead, readCopy, rewriteCopyOnly, rewriteMapBlock } from '../outils/bibliotheques/copies.mjs';
 import { checkPage, inlineScripts, rewritePage } from '../outils/bibliotheques/app.mjs';
 import { importMapText, readMap } from '../outils/bibliotheques/carte.mjs';
 
@@ -155,6 +155,59 @@ test('la politique cite l\'empreinte du script de choix et celle du texte exact 
   const other = copyOf({ dossier: 'autre/dossier' });
   const moved = checkPage(page, policy, catalogue, text, other);
   assert.ok(moved.some(problem => /à ajouter à script-src : 'sha256-/.test(problem)) && moved.some(problem => /à retirer de script-src : 'sha256-/.test(problem)), 'une autre carte, une autre empreinte');
+});
+
+// ---- La copie seule (aucun CDN pour la fonction : choix du porteur, 25/11, esm.sh retiré) ----
+
+const onlyPkg = () => { const packageJson = pkg({ cdn: null }); delete packageJson.gfs.carte.origine; return packageJson; };
+
+test('readCopy : `cdn: null` fait la copie seule, sans origine de CDN dans la carte ; une autre valeur est refusée ; la carte du CDN reste exigée sans lui', () => {
+  assert.equal(copyOf().sansCdn, false);
+  const copy = readCopy(onlyPkg());
+  assert.equal(copy.sansCdn, true);
+  assert.equal(copy.carte.origine, null, 'plus d\'origine à écrire');
+  const noOrigin = pkg();
+  delete noOrigin.gfs.carte.origine;
+  assert.throws(() => readCopy(noOrigin), /gfs\.carte\.origine/);
+  assert.throws(() => copyOf({ cdn: 'https://cdn.jsdelivr.net' }), /gfs\.copie\.cdn : null/);
+  assert.throws(() => copyOf({ cdn: false }), /gfs\.copie\.cdn : null/);
+});
+
+test('rewriteCopyOnly : une carte ordinaire, celle de la copie ; elle prend la place du bloc des deux cartes ; relancer ne change rien ; le script de choix ne revient pas', () => {
+  const both = pkg();
+  const old = rewriteMapBlock(PAGE, cdnText(both), readCopy(both));
+  const copy = readCopy(onlyPkg());
+  const page = rewriteCopyOnly(old, copy);
+  assert.equal(page, PAGE.replace('<script type="importmap">\n</script>', copyOnlyElement(copy)), 'même page que depuis la carte écrite à la main');
+  assert.ok(page.includes(`<script type="importmap">${copyMapText(copy)}</script>`));
+  assert.ok(!page.includes('gfs-carte-') && !page.includes('esm.sh') && !page.includes('getElementById'), 'ni carte de CDN, ni script de choix');
+  assert.equal(rewriteCopyOnly(page, copy), page);
+  assert.throws(() => rewriteCopyOnly('<html></html>', copy), /ni <script type="importmap"> ni le bloc/);
+});
+
+test('checkCopyOnly : une page conforme n\'a aucun écart ; l\'ancien bloc des deux cartes, une entrée changée ou une page sans carte se disent', () => {
+  const copy = readCopy(onlyPkg());
+  const page = rewriteCopyOnly(PAGE, copy);
+  assert.deepEqual(checkCopyOnly(page, copy), []);
+  assert.match(checkCopyOnly(rewriteMapBlock(PAGE, cdnText(pkg()), readCopy(pkg())), copy)[0], /bloc des deux cartes d'importation alors que la copie est seule/);
+  assert.ok(checkCopyOnly(page.replace('./vendor/editeur/tiptap__core.js', './vendor/editeur/vieux.js'), copy).some(problem => /changer dans la carte d'importation : @tiptap\/core/.test(problem)));
+  assert.throws(() => checkCopyOnly('<html></html>', copy), /pas de <script type="importmap">/);
+});
+
+test('copie seule dans la page : la politique ne cite que l\'empreinte de la carte de la copie (plus celle du script de choix ni d\'une carte de CDN) ; un oubli se voit ; idempotent', () => {
+  const packageJson = onlyPkg();
+  const copy = readCopy(packageJson);
+  const policy = { page: 'index.html', fixed: ["'self'"] };
+  const catalogue = { bibliotheques: [] };
+  const old = rewritePage(PAGE, { ...policy, fixed: ["'self'", 'https://esm.sh'] }, catalogue, cdnText(pkg()), readCopy(pkg()));
+  assert.equal(inlineScripts(old).length, 3, 'avant : deux cartes en données et le script');
+  const page = rewritePage(old, policy, catalogue, null, copy);
+  assert.deepEqual(inlineScripts(page).map(script => script.hash), [sha256(copyMapText(copy))]);
+  assert.ok(page.includes(sha256(copyMapText(copy))) && !page.includes('esm.sh') && !page.includes(sha256(bootstrapText(readCopy(pkg())))));
+  assert.deepEqual(checkPage(page, policy, catalogue, null, copy), []);
+  assert.equal(rewritePage(page, policy, catalogue, null, copy), page, 'idempotent');
+  assert.ok(checkPage(page.replace(sha256(copyMapText(copy)), ''), policy, catalogue, null, copy).some(problem => problem.includes('à ajouter à script-src')), 'l\'empreinte oubliée');
+  assert.ok(checkPage(old, policy, catalogue, null, copy).some(problem => /bloc des deux cartes/.test(problem)), 'l\'ancien bloc est un écart');
 });
 
 // ---- Le dossier de la copie ----

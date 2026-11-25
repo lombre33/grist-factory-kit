@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { EXACT_VERSION_RE, integrity, isPackagePath, packFile, checkCdn, fetchFile } from './primitives.mjs';
 import { readMap, importMapText, rewriteImportMap, checkImportMap, blank } from './carte.mjs';
-import { readCopy, rewriteMapBlock, checkMapBlock, checkCopyFolder } from './copies.mjs';
+import { readCopy, rewriteMapBlock, checkMapBlock, checkCopyFolder, rewriteCopyOnly, checkCopyOnly } from './copies.mjs';
 import { readCodeSpec, writeLiterals, readLiterals } from './empreintes.mjs';
 
 export const JSDELIVR = 'https://cdn.jsdelivr.net/npm';
@@ -189,8 +189,15 @@ function rewriteScriptSrc(html, policy, catalogue) {
 // La page telle que la liste la dit : la carte d'importation d'abord (son empreinte change avec elle), puis le `script-src` qui cite les empreintes. Sans `mapText` (la liste ne déclare pas de carte)
 // ou sans `gfs.politique`, la partie correspondante reste telle que l'app l'a écrite.
 export function rewritePage(html, policy, catalogue, mapText = null, copy = null) {
-  const withMap = mapText === null ? html : (copy === null ? rewriteImportMap(html, mapText) : rewriteMapBlock(html, mapText, copy));
+  const withMap = withMapOf(html, mapText, copy);
   return policy.fixed === null ? withMap : rewriteScriptSrc(withMap, policy, catalogue);
+}
+
+// La page avec sa carte d'importation : la carte du CDN seule, ou avec celle de la copie (deux cartes en données et le script de choix), ou celle de la copie seule (`gfs.copie.cdn: null`).
+function withMapOf(html, mapText, copy) {
+  if (copy !== null && copy.sansCdn) return rewriteCopyOnly(html, copy);
+  if (mapText === null) return html;
+  return copy === null ? rewriteImportMap(html, mapText) : rewriteMapBlock(html, mapText, copy);
 }
 
 function scriptSrcProblems(html, policy, catalogue) {
@@ -209,11 +216,17 @@ function scriptSrcProblems(html, policy, catalogue) {
   return problems;
 }
 
+function mapProblemsOf(html, mapText, copy) {
+  if (copy !== null && copy.sansCdn) return checkCopyOnly(html, copy);
+  if (mapText === null) return [];
+  return copy === null ? checkImportMap(html, mapText) : checkMapBlock(html, mapText, copy);
+}
+
 // Les écarts entre la page et ce que la liste dit : la carte d'importation, puis les sources de `script-src` (jugées sur la page avec sa carte à jour : c'est celle-là qu'il faut citer).
 export function checkPage(html, policy, catalogue, mapText = null, copy = null) {
-  const problems = mapText === null ? [] : (copy === null ? checkImportMap(html, mapText) : checkMapBlock(html, mapText, copy));
+  const problems = mapProblemsOf(html, mapText, copy);
   if (policy.fixed === null) return problems;
-  const withMap = mapText === null ? html : (copy === null ? rewriteImportMap(html, mapText) : rewriteMapBlock(html, mapText, copy));
+  const withMap = withMapOf(html, mapText, copy);
   return [...problems, ...scriptSrcProblems(withMap, policy, catalogue)];
 }
 
@@ -221,6 +234,9 @@ function reportLiterals({ changed, unknown }, log) {
   log(`code : ${changed.length ? `${changed.length} fichier(s) réécrit(s) (${changed.join(', ')})` : 'empreintes inchangées'}\n`);
   if (unknown.length) throw new Error(`des adresses sont écrites avec une empreinte sans être dans la liste (gfs.bibliotheques) :\n  - ${unknown.join('\n  - ')}`);
 }
+
+// La carte du CDN, en texte : rien quand la liste n'en déclare pas, ou quand la copie est seule (`gfs.copie.cdn: null`).
+const cdnMapText = (map, copy) => (map === null || (copy !== null && copy.sansCdn) ? null : importMapText(map));
 
 // Écrit le catalogue, les empreintes du code, puis la page de `root` d'après sa liste.
 export async function generate(root, options = {}, log = text => process.stdout.write(text)) {
@@ -234,7 +250,8 @@ export async function generate(root, options = {}, log = text => process.stdout.
   const policy = readPolicy(packageJson);
   if ((policy.fixed === null && map === null) || !existsSync(join(root, policy.page))) return;
   const html = readFileSync(join(root, policy.page), 'utf8');
-  const next = rewritePage(html, policy, { bibliotheques: entries }, map && importMapText(map), readCopy(packageJson, root));
+  const copy = readCopy(packageJson, root);
+  const next = rewritePage(html, policy, { bibliotheques: entries }, cdnMapText(map, copy), copy);
   if (next !== html) writeFileSync(join(root, policy.page), next);
   log(`${policy.page} : ${next === html ? 'inchangée' : 'réécrite'}\n`);
 }
@@ -249,7 +266,7 @@ export function verify(root) {
   const policy = readPolicy(packageJson);
   const map = readMap(packageJson);
   const copy = readCopy(packageJson, root);
-  if (policy.fixed !== null || map !== null) problems.push(...checkPage(readFileSync(join(root, policy.page), 'utf8'), policy, catalogue, map && importMapText(map), copy).map(problem => `${policy.page} : ${problem}`));
+  if (policy.fixed !== null || map !== null) problems.push(...checkPage(readFileSync(join(root, policy.page), 'utf8'), policy, catalogue, cdnMapText(map, copy), copy).map(problem => `${policy.page} : ${problem}`));
   if (copy) problems.push(...checkCopyFolder(root, copy));
   return { catalogue, problems };
 }

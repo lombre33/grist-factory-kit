@@ -2,6 +2,15 @@
 
 Une version = une étiquette Git (`v0.1.0`). Une app avance sa référence au kit quand elle le décide ; chaque ligne ci-dessous dit ce qui change pour elle.
 
+## 0.30.0 : une copie figée peut être le seul mode d'une fonction : plus de carte de CDN, plus de script de choix (25/11/2026)
+
+Choix du porteur de GFS (25/11) : l'éditeur de Publipostage+ ne se charge plus depuis esm.sh. Mesuré (faits vérifiés 167 et 168 de GFS) : esm.sh et le `+esm` de jsDelivr ne rendent pas les octets de npm, et le `+esm` charge jusqu'à sept copies de ProseMirror. La fonction n'a plus de CDN en attendant que GFS serve la copie figée par jsDelivr (une 0.31.0).
+
+- **`gfs.copie.cdn: null`** (`outils/bibliotheques/copies.mjs`) : la copie est le seul mode. La page porte alors **une carte d'importation ordinaire**, celle de la copie, à la place du bloc des deux cartes en données et de son script de choix ; la politique cite l'empreinte de cette seule carte. `gfs.carte.origine` n'est plus exigée (il n'y a plus de carte de CDN : `plages`, `uniques` et `sousChemins` ne servent plus qu'à la construction de la copie, ou à rien).
+- Sans `cdn` : rien ne change (les deux cartes, le script de choix, `copie=<fonction>`). Une valeur autre que `null` est refusée.
+- `--verifier` dit l'ancien bloc des deux cartes resté dans la page (« relancer l'outil ») ; relancer l'outil réécrit le bloc en carte ordinaire et retire de `script-src` les empreintes du script et des deux cartes.
+- **Essai** : `test/bibliotheques-copies.test.mjs` (la déclaration, la page réécrite depuis le bloc des deux cartes, la vérification, la politique). **`KIT_VERSION`** suit.
+
 ## 0.29.1 : la fenêtre de mise à jour des noms se tient seule (25/11/2026)
 
 Mesuré dans le labo de GFS avec la **vraie Publipostage+** (qui habille ses fenêtres à sa façon : son cadre est un `.modal-content`, ses boutons ceux de `.var-modal-actions`, et elle ne charge pas `css/windows.css`) : la fenêtre de la 0.29.0 s'ouvrait, mais **sans fond ni bouton** (le texte flottait sur la page de l'app) et **sous la barre repliable** de l'app (`z-index: var(--z-dialog)` : ce jeton n'existe pas dans la page de l'app, la déclaration est annulée, le niveau vaut `auto`). Les essais du kit n'avaient rien vu : leur page charge `windows.css`.

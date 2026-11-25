@@ -1,6 +1,6 @@
 {
   "name": "grist-factory-kit",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "private": true,
   "type": "module",
   "description": "Kit commun des apps Grist Factory : jetons de la charte, thème, traduction français / anglais, fenêtres, saisies et confirmations, couches, sélecteur de couleur, lien avec GFS (liens entre apps, fichiers passés, exports rangés, PDF joints à leur ligne, départ de l'app), ambiance de GFS, correcteurs du navigateur coupés par un bouton de GFS, relais des appels bloqués par la politique de sécurité de l'app vers GFS, calendrier (mois, semaine, jour), moteur de partage entre documents (repris de Sync+), fenêtre commune de mise à jour des noms de tables et de colonnes, outil de la liste unique des bibliothèques d'une app. Modules ES pour le navigateur, aucune bibliothèque.",

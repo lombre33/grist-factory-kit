@@ -36,12 +36,14 @@ export function readMap(packageJson) {
   const spec = packageJson.gfs && packageJson.gfs.carte;
   if (spec === undefined) return null;
   const deps = packageJson.dependencies || {};
-  if (!/^https:\/\/[^/\s]+$/.test(spec.origine || '')) throw new Error('gfs.carte.origine : une origine https attendue (https://esm.sh)');
+  // Une copie seule (`gfs.copie.cdn: null`, copies.mjs) n'a pas de carte du CDN : l'origine d'un CDN n'a plus de sens.
+  const copyOnly = packageJson.gfs.copie !== undefined && packageJson.gfs.copie.cdn === null;
+  if (!copyOnly && !/^https:\/\/[^/\s]+$/.test(spec.origine || '')) throw new Error('gfs.carte.origine : une origine https attendue (https://esm.sh)');
   checkNames(spec, deps);
   checkRemaps(spec, deps);
   const fixes = spec.fixes || {};
   if (Object.values(fixes).some(value => typeof value !== 'string')) throw new Error('gfs.carte.fixes : des adresses attendues');
-  return { origine: spec.origine, fixes, paquets: spec.paquets, uniques: new Set(spec.uniques || []), sousChemins: spec.sousChemins || {}, plages: spec.plages || {}, cible: spec.cible || 'es2022', deps };
+  return { origine: spec.origine || null, fixes, paquets: spec.paquets, uniques: new Set(spec.uniques || []), sousChemins: spec.sousChemins || {}, plages: spec.plages || {}, cible: spec.cible || 'es2022', deps };
 }
 
 // La carte : { imports } dans l'ordre, les entrées fixes, les paquets, les sous-chemins, les plages.

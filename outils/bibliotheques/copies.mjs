@@ -5,13 +5,15 @@
 //   "gfs": { "copie": { "fonction": "editeur",                       l'identifiant que GFS met dans l'adresse (`copie=editeur`) et que l'app lit par `GfsLink.copies()`
 //                       "dossier": "vendor/editeur",                 où loge la copie, commitée (l'adresse de ses modules est relative à la page)
 //                       "sansEsm": ["@tiptap/pm"],                   des paquets de la carte que le code n'importe jamais par leur nom
-//                       "cle": "pp_editeur_copie" } }                facultatif : une clé du stockage du navigateur qui vaut `copie` pour choisir la copie quand l'app tourne seule (jamais lue sans try/catch)
+//                       "cle": "pp_editeur_copie",                   facultatif : une clé du stockage du navigateur qui vaut `copie` pour choisir la copie quand l'app tourne seule (jamais lue sans try/catch)
+//                       "cdn": null } }                              facultatif : `null` quand la copie est le seul mode (aucun CDN pour cette fonction : la page porte la carte de la copie, en carte ordinaire, sans script de choix
+//                                                                    ni carte de CDN ; `gfs.carte.origine` n'est plus exigée). Absent : la page garde les deux cartes et le script de choix.
 // Une copie par app : la carte est une. Rien n'est chargé depuis une adresse lue dans la page ou le stockage : le script choisit entre deux textes que la page porte.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isPackagePath, integrity } from './primitives.mjs';
-import { readMap, mapProblems, importMapElement, blank } from './carte.mjs';
+import { readMap, mapProblems, importMapElement, checkImportMap, blank } from './carte.mjs';
 import { bundleModules, installDeps, loadEsbuildFrom, modulesOf, moduleName } from './miroir.mjs';
 
 export const CDN_ID = 'gfs-carte-cdn';
@@ -35,7 +37,8 @@ export function readCopy(packageJson, root = null) {
   if (!NAME_RE.test(spec.fonction || '')) throw new Error('gfs.copie.fonction : un identifiant attendu (lettres, chiffres, « - », « _ »)');
   if (!isPackagePath(spec.dossier) || spec.dossier.startsWith('node_modules')) throw new Error('gfs.copie.dossier : un dossier relatif à l\'app attendu');
   if (spec.cle !== undefined && !NAME_RE.test(spec.cle)) throw new Error('gfs.copie.cle : un nom de clé attendu (lettres, chiffres, « - », « _ »)');
-  return { fonction: spec.fonction, dossier: spec.dossier, prefixe: `./${spec.dossier}/`, cle: spec.cle === undefined ? null : spec.cle, modules: modulesOf(packageJson, spec, 'gfs.copie'), carte, deps: carte.deps, files: root === null ? null : manifestFiles(root, spec.dossier) };
+  if (spec.cdn !== undefined && spec.cdn !== null) throw new Error('gfs.copie.cdn : null (la copie est le seul mode) ou absent (la carte du CDN est celle de gfs.carte)');
+  return { sansCdn: spec.cdn === null, fonction: spec.fonction, dossier: spec.dossier, prefixe: `./${spec.dossier}/`, cle: spec.cle === undefined ? null : spec.cle, modules: modulesOf(packageJson, spec, 'gfs.copie'), carte, deps: carte.deps, files: root === null ? null : manifestFiles(root, spec.dossier) };
 }
 
 // L'adresse d'un module de la copie : relative à la page, avec les huit premiers chiffres hexadécimaux de son empreinte quand la copie est construite.
@@ -72,6 +75,9 @@ const BLOCK_RE = new RegExp(`<script type="application/json" id="${CDN_ID}">([\\
 // Le bloc que la page porte à la place de sa carte : les deux cartes en données (rien à exécuter, la politique ne s'y applique pas) et le script qui en pose une.
 export const mapBlock = (cdnText, copy) => `<script type="application/json" id="${CDN_ID}">${cdnText}</script>\n<script type="application/json" id="${COPY_ID}">${copyMapText(copy)}</script>\n<script>${bootstrapText(copy)}</script>`;
 
+// La carte d'une copie seule : une carte d'importation ordinaire (aucun script de choix, aucune carte de CDN), à la place du bloc des deux cartes ou de la carte écrite une fois à la main.
+export const copyOnlyElement = copy => `<script type="importmap">${copyMapText(copy)}</script>`;
+
 function blockSpan(html) {
   const match = BLOCK_RE.exec(blank(html));
   return match ? { start: match.index, end: match.index + match[0].length } : null;
@@ -82,6 +88,19 @@ export function rewriteMapBlock(html, cdnText, copy) {
   const span = blockSpan(html) || importMapElement(html);
   if (!span) throw new Error('la page n\'a ni <script type="importmap"> ni le bloc des deux cartes : écrire une fois la balise à la main, vide (le reste, l\'outil le tient)');
   return `${html.slice(0, span.start)}${mapBlock(cdnText, copy)}${html.slice(span.end)}`;
+}
+
+// La page d'une copie seule, avec sa carte ordinaire.
+export function rewriteCopyOnly(html, copy) {
+  const span = blockSpan(html) || importMapElement(html);
+  if (!span) throw new Error('la page n\'a ni <script type="importmap"> ni le bloc des deux cartes : écrire une fois la balise à la main, vide (le reste, l\'outil le tient)');
+  return `${html.slice(0, span.start)}${copyOnlyElement(copy)}${html.slice(span.end)}`;
+}
+
+// Les écarts entre la page d'une copie seule et ce que la liste dit : l'ancien bloc des deux cartes ne reste pas, la carte est celle de la copie.
+export function checkCopyOnly(html, copy) {
+  if (blockSpan(html)) return ['la page a encore le bloc des deux cartes d\'importation alors que la copie est seule (gfs.copie.cdn: null) : relancer l\'outil'];
+  return checkImportMap(html, copyMapText(copy));
 }
 
 // Les écarts entre le bloc de la page et ce que la liste dit : l'une des deux cartes, le script, une carte d'importation restée en dur à côté.
